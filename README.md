@@ -12,14 +12,15 @@ CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读
 
 - 加载并验证用户基础资料。
 - 使用 `get_study_progress` 读取指定用户的学习进度。
-- 已实现受白名单约束的本地更新工具 `update_study_progress`，但尚未开放给模型自动调用。
+- 已实现受白名单约束的本地更新工具 `update_study_progress`。
+- 在用户明确选择更新后，千问生成写入参数提案；只有用户检查后输入 `CONFIRM` 才执行。
 - 使用千问 `qwen3.8-flash` 进行 Function Calling（函数调用）。
 - 使用 JSON Schema 约束模型输出结构。
 - 限制 Agent 最大循环步数，并记录工具、轨迹和停止原因。
 - 保留不产生 API 费用的本地规则模式。
 - 复习任务使用“题号、题名、真实专题”的结构化字典，减少模型猜测题型。
 
-当前 LLM 循环只向模型开放 `get_study_progress`。写入工具不会被模型自动调用。
+普通建议循环只向模型开放 `get_study_progress`。写入提案必须由用户明确选择 `update` 才会生成，确认前不会修改文件。
 
 学习进度中的复习任务示例：
 
@@ -65,6 +66,20 @@ CAREER_AGENT_MODE=llm
 test_user
 ```
 
+随后选择操作：
+
+```text
+advice  # 生成建议；直接回车也是此模式
+update  # 根据明确要求生成更新提案
+```
+
+选择 `update` 后，程序会先显示完整提案。核对用户名、字段和新值后：
+
+```text
+CONFIRM  # 精确输入此确认词才会保存
+其他输入  # 取消，不调用写入工具
+```
+
 如需使用完全本地、无 API 费用的规则模式，将 `.env` 中的模式改为：
 
 ```ini
@@ -79,21 +94,24 @@ CAREER_AGENT_MODE=rule
 
 单元测试使用模型响应替身，不会真实调用千问，也不会产生模型费用。
 
+脱敏运行证据：
+
+- [`examples/careeragent_v0_6_review_topics_output.json`](examples/careeragent_v0_6_review_topics_output.json)：只读工具与结构化建议。
+- [`examples/careeragent_v0_7_confirmed_update_output.json`](examples/careeragent_v0_7_confirmed_update_output.json)：模型提案、用户确认与写入成功。
+
 ## 数据流
 
 ```text
 启动 main.py
 → 加载并验证用户
-→ 千问判断是否需要学习进度
-→ 调用 get_study_progress
-→ 将工具结果返回千问
-→ 千问生成结构化建议
-→ 本地再次验证建议结构
-→ 输出结果、工具记录、Token 用量和循环轨迹
+→ 选择 advice 或 update
+├─ advice：千问调用只读工具 → 生成结构化建议
+└─ update：千问生成参数提案 → Python验证 → 用户确认 → 执行或取消
 ```
 
 ## 项目边界
 
-- 当前只有千问模型能选择只读工具，写入操作仍由程序显式控制。
+- 建议流程中，千问可以选择只读工具；写入流程仍由程序和用户共同控制。
+- `requested_tools` 表示模型提出调用，`used_tools` 表示 Python 已实际执行；取消时后者为空，确认执行后才包含写入工具。
 - 当前没有 RAG、多 Agent、网页前端、自动岗位搜索或自动投递。
 - `used_tools` 记录实际执行过的工具；`trace` 同时记录模型决策和程序动作。

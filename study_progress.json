@@ -2,7 +2,7 @@
   "test_user": {
     "python_progress": "在CareerAgent中学习函数与测试",
     "leetcode_topic": "滑动窗口",
-    "agent_progress": "CareerAgent V0.6已完成复习题题号与真实专题结构化",
+    "agent_progress": "CareerAgent V0.7已完成受控写入确认流程",
     "review_tasks": [
       {
         "problem_id": "560",

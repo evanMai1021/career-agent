@@ -11,11 +11,13 @@ import main as main_module
 from main import (
     generate_advice,
     get_study_progress,
+    resolve_update_proposal,
     run_agent_loop,
     update_study_progress,
+    validate_study_progress_update,
     validate_user_profile
 )
-from qwen_agent import run_qwen_agent_loop
+from qwen_agent import run_qwen_agent_loop, run_qwen_update_proposal
 
 
 SAMPLE_REVIEW_TASKS = [
@@ -232,7 +234,21 @@ class GetStudyProgressTests(unittest.TestCase):
 
     def test_returns_progress_for_existing_user(self):
         """正常用户名会返回结构化、可序列化的学习进度。"""
-        progress_file = Path(__file__).with_name("study_progress.json")
+        fixture = {
+            "test_user": {
+                "python_progress": "在CareerAgent中学习函数与测试",
+                "leetcode_topic": "滑动窗口",
+                "agent_progress": "测试用进度",
+                "review_tasks": SAMPLE_REVIEW_TASKS
+            }
+        }
+        temp_dir = TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        progress_file = Path(temp_dir.name) / "progress.json"
+        progress_file.write_text(
+            json.dumps(fixture, ensure_ascii=False),
+            encoding="utf-8"
+        )
 
         result = get_study_progress(" test_user ", progress_file)
 
@@ -244,7 +260,7 @@ class GetStudyProgressTests(unittest.TestCase):
                 "progress": {
                     "python_progress": "在CareerAgent中学习函数与测试",
                     "leetcode_topic": "滑动窗口",
-                    "agent_progress": "CareerAgent V0.6已完成复习题题号与真实专题结构化",
+                    "agent_progress": "测试用进度",
                     "review_tasks": SAMPLE_REVIEW_TASKS
                 }
             }
@@ -506,6 +522,114 @@ class UpdateStudyProgressTests(unittest.TestCase):
         self.assertEqual(saved_data, self.original_data)
 
 
+class ResolveUpdateProposalTests(unittest.TestCase):
+    """验证只有明确确认后才会执行写入工具。"""
+
+    def setUp(self):
+        self.proposal = {
+            "username": "test_user",
+            "field": "agent_progress",
+            "new_value": "CareerAgent V0.7确认流程"
+        }
+
+    def test_rejection_does_not_execute_update_tool(self):
+        """任何非 CONFIRM 输入都取消，写入工具不得被调用。"""
+        update_tool = MagicMock()
+
+        result = resolve_update_proposal(
+            self.proposal,
+            "no",
+            "progress.json",
+            update_tool=update_tool
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "cancelled")
+        self.assertEqual(result["used_tools"], [])
+        self.assertEqual(result["stop_reason"], "user_cancelled")
+        update_tool.assert_not_called()
+
+    def test_confirmation_executes_update_tool(self):
+        """精确输入 CONFIRM 后，才把已预览参数交给写入工具。"""
+        update_tool = MagicMock(return_value={
+            "ok": True,
+            "updated_field": "agent_progress",
+            "progress": {
+                "agent_progress": "CareerAgent V0.7确认流程"
+            }
+        })
+
+        result = resolve_update_proposal(
+            self.proposal,
+            "CONFIRM",
+            "progress.json",
+            update_tool=update_tool
+        )
+
+        update_tool.assert_called_once_with(
+            "test_user",
+            "agent_progress",
+            "CareerAgent V0.7确认流程",
+            "progress.json"
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["used_tools"], ["update_study_progress"])
+        self.assertEqual(result["stop_reason"], "completed")
+
+    def test_write_failure_is_reported_after_tool_execution(self):
+        """写入失败会停止并说明工具已尝试执行，而不是假装没调用。"""
+        update_tool = MagicMock(return_value={
+            "ok": False,
+            "error": "无法保存学习进度数据。"
+        })
+
+        result = resolve_update_proposal(
+            self.proposal,
+            "CONFIRM",
+            "progress.json",
+            update_tool=update_tool
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], "update_failed")
+        self.assertEqual(result["stop_reason"], "tool_error")
+        self.assertEqual(result["used_tools"], ["update_study_progress"])
+        self.assertEqual(result["error"], "无法保存学习进度数据。")
+
+    def test_confirmation_updates_a_temporary_json_file(self):
+        """确认流程与真实写入工具组合后，临时JSON会保存新值。"""
+        original_data = {
+            "test_user": {
+                "python_progress": "学习函数与测试",
+                "leetcode_topic": "滑动窗口",
+                "agent_progress": "CareerAgent V0.6完成",
+                "review_tasks": SAMPLE_REVIEW_TASKS
+            }
+        }
+        with TemporaryDirectory() as temp_dir:
+            progress_file = Path(temp_dir) / "progress.json"
+            progress_file.write_text(
+                json.dumps(original_data, ensure_ascii=False),
+                encoding="utf-8"
+            )
+
+            result = resolve_update_proposal(
+                self.proposal,
+                "CONFIRM",
+                progress_file
+            )
+
+            saved_data = json.loads(progress_file.read_text(encoding="utf-8"))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(
+            saved_data["test_user"]["agent_progress"],
+            "CareerAgent V0.7确认流程"
+        )
+
+
 class ControlledAgentLoopTests(unittest.TestCase):
     """验证规则版循环能完成、遇错停止并遵守最大步数。"""
 
@@ -737,6 +861,148 @@ class QwenAgentLoopTests(unittest.TestCase):
         )
 
 
+class QwenUpdateProposalTests(unittest.TestCase):
+    """验证模型只能提出写入参数，不能在确认前修改文件。"""
+
+    def test_returns_validated_proposal_without_executing_tool(self):
+        """合法参数会进入待确认状态，但 used_tools 仍为空。"""
+        tool_call = SimpleNamespace(
+            id="call_update_001",
+            function=SimpleNamespace(
+                name="update_study_progress",
+                arguments=json.dumps({
+                    "username": "test_user",
+                    "field": "agent_progress",
+                    "new_value": "CareerAgent V0.7提案阶段"
+                }, ensure_ascii=False)
+            )
+        )
+        client = MagicMock()
+        client.chat.completions.create.return_value = make_qwen_response(
+            tool_calls=[tool_call]
+        )
+        validator = MagicMock(return_value=None)
+
+        result = run_qwen_update_proposal(
+            "test_user",
+            "AI Agent开发",
+            "把Agent进度更新为CareerAgent V0.7提案阶段",
+            validator,
+            client=client
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "confirmation_required")
+        self.assertEqual(result["used_tools"], [])
+        self.assertEqual(result["requested_tools"], ["update_study_progress"])
+        self.assertEqual(
+            result["write_proposal"],
+            {
+                "username": "test_user",
+                "field": "agent_progress",
+                "new_value": "CareerAgent V0.7提案阶段"
+            }
+        )
+        validator.assert_called_once_with(
+            "agent_progress",
+            "CareerAgent V0.7提案阶段"
+        )
+        request = client.chat.completions.create.call_args.kwargs
+        self.assertEqual(
+            request["tool_choice"]["function"]["name"],
+            "update_study_progress"
+        )
+
+    def test_rejects_proposal_for_another_user(self):
+        """模型不能提出修改另一名用户的进度。"""
+        tool_call = SimpleNamespace(
+            id="call_update_002",
+            function=SimpleNamespace(
+                name="update_study_progress",
+                arguments=json.dumps({
+                    "username": "other_user",
+                    "field": "agent_progress",
+                    "new_value": "不应接受"
+                }, ensure_ascii=False)
+            )
+        )
+        client = MagicMock()
+        client.chat.completions.create.return_value = make_qwen_response(
+            tool_calls=[tool_call]
+        )
+        validator = MagicMock()
+
+        result = run_qwen_update_proposal(
+            "test_user",
+            "AI Agent开发",
+            "更新进度",
+            validator,
+            client=client
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["agent_loop"]["stop_reason"],
+            "tool_scope_violation"
+        )
+        validator.assert_not_called()
+
+    def test_rejects_invalid_update_value(self):
+        """Python验证未通过时，模型提案不能进入待确认状态。"""
+        tool_call = SimpleNamespace(
+            id="call_update_003",
+            function=SimpleNamespace(
+                name="update_study_progress",
+                arguments=json.dumps({
+                    "username": "test_user",
+                    "field": "review_tasks",
+                    "new_value": "560"
+                }, ensure_ascii=False)
+            )
+        )
+        client = MagicMock()
+        client.chat.completions.create.return_value = make_qwen_response(
+            tool_calls=[tool_call]
+        )
+
+        result = run_qwen_update_proposal(
+            "test_user",
+            "AI Agent开发",
+            "把复习任务更新为560",
+            validate_study_progress_update,
+            client=client
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["agent_loop"]["stop_reason"],
+            "invalid_update_proposal"
+        )
+        self.assertEqual(result["used_tools"], [])
+
+    def test_rejects_missing_tool_proposal(self):
+        """模型没有返回唯一工具调用时，不能猜测写入参数。"""
+        client = MagicMock()
+        client.chat.completions.create.return_value = make_qwen_response(
+            content="我建议更新进度",
+            tool_calls=[]
+        )
+
+        result = run_qwen_update_proposal(
+            "test_user",
+            "AI Agent开发",
+            "更新Agent进度",
+            validate_study_progress_update,
+            client=client
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["agent_loop"]["stop_reason"],
+            "invalid_model_output"
+        )
+
+
 class MainFlowTests(unittest.TestCase):
     """验证主流程能在规则模式和千问模式之间受控切换。"""
 
@@ -763,7 +1029,7 @@ class MainFlowTests(unittest.TestCase):
                 return_value=tool_result
             ) as progress_tool,
             patch.dict("os.environ", {"CAREER_AGENT_MODE": "rule"}),
-            patch("builtins.input", return_value="test_user"),
+            patch("builtins.input", side_effect=["test_user", ""]),
             redirect_stdout(output)
         ):
             main_module.main()
@@ -812,7 +1078,7 @@ class MainFlowTests(unittest.TestCase):
                 return_value=loop_result
             ) as qwen_loop,
             patch.dict("os.environ", {"CAREER_AGENT_MODE": "llm"}),
-            patch("builtins.input", return_value="test_user"),
+            patch("builtins.input", side_effect=["test_user", ""]),
             redirect_stdout(output)
         ):
             main_module.main()
@@ -827,6 +1093,162 @@ class MainFlowTests(unittest.TestCase):
         self.assertEqual(result["model"], "qwen3.8-flash")
         self.assertEqual(result["llm_usage"]["total_tokens"], 150)
         self.assertEqual(result["agent_loop"]["mode"], "llm_tool_calling")
+
+    def test_main_cancels_update_without_exact_confirmation(self):
+        """主流程展示提案后，空确认会取消且不执行写入。"""
+        users = {"test_user": {"target_role": "AI Agent开发"}}
+        proposal_result = {
+            "ok": True,
+            "status": "confirmation_required",
+            "used_tools": [],
+            "requested_tools": ["update_study_progress"],
+            "model": "qwen3.8-flash",
+            "llm_usage": {
+                "prompt_tokens": 80,
+                "completion_tokens": 20,
+                "total_tokens": 100
+            },
+            "write_proposal": {
+                "username": "test_user",
+                "field": "agent_progress",
+                "new_value": "CareerAgent V0.7提案阶段"
+            },
+            "agent_loop": {
+                "mode": "llm_update_proposal",
+                "max_steps": 1,
+                "stop_reason": "confirmation_required",
+                "trace": []
+            }
+        }
+        output = StringIO()
+
+        with (
+            patch.object(main_module, "load_users", return_value=users),
+            patch.object(
+                main_module,
+                "run_qwen_update_proposal",
+                return_value=proposal_result
+            ) as proposal_call,
+            patch.object(main_module, "update_study_progress") as update_tool,
+            patch.dict("os.environ", {"CAREER_AGENT_MODE": "llm"}),
+            patch(
+                "builtins.input",
+                side_effect=[
+                    "test_user",
+                    "update",
+                    "把Agent进度更新为CareerAgent V0.7提案阶段",
+                    ""
+                ]
+            ),
+            redirect_stdout(output)
+        ):
+            main_module.main()
+
+        proposal_call.assert_called_once_with(
+            username="test_user",
+            target_role="AI Agent开发",
+            user_request="把Agent进度更新为CareerAgent V0.7提案阶段",
+            validate_update=main_module.validate_study_progress_update
+        )
+        update_tool.assert_not_called()
+        final_output = output.getvalue().split("最终结果：", maxsplit=1)[1]
+        result = json.loads(final_output)
+        self.assertEqual(result["status"], "cancelled")
+        self.assertEqual(result["used_tools"], [])
+        self.assertEqual(result["requested_tools"], ["update_study_progress"])
+        self.assertEqual(
+            result["agent_loop"]["stop_reason"],
+            "user_cancelled"
+        )
+
+    def test_main_executes_update_after_exact_confirmation(self):
+        """主流程收到 CONFIRM 后执行写入并记录完整轨迹。"""
+        users = {"test_user": {"target_role": "AI Agent开发"}}
+        proposal_result = {
+            "ok": True,
+            "status": "confirmation_required",
+            "used_tools": [],
+            "requested_tools": ["update_study_progress"],
+            "model": "qwen3.8-flash",
+            "llm_usage": {
+                "prompt_tokens": 80,
+                "completion_tokens": 20,
+                "total_tokens": 100
+            },
+            "write_proposal": {
+                "username": "test_user",
+                "field": "agent_progress",
+                "new_value": "CareerAgent V0.7确认流程"
+            },
+            "agent_loop": {
+                "mode": "llm_update_proposal",
+                "max_steps": 1,
+                "stop_reason": "confirmation_required",
+                "trace": [{
+                    "step": 1,
+                    "action": "qwen_update_proposal",
+                    "status": "confirmation_required"
+                }]
+            }
+        }
+        update_result = {
+            "ok": True,
+            "username": "test_user",
+            "updated_field": "agent_progress",
+            "progress": {
+                "python_progress": "学习函数与测试",
+                "leetcode_topic": "滑动窗口",
+                "agent_progress": "CareerAgent V0.7确认流程",
+                "review_tasks": SAMPLE_REVIEW_TASKS
+            }
+        }
+        output = StringIO()
+
+        with (
+            patch.object(main_module, "load_users", return_value=users),
+            patch.object(
+                main_module,
+                "run_qwen_update_proposal",
+                return_value=proposal_result
+            ),
+            patch.object(
+                main_module,
+                "update_study_progress",
+                return_value=update_result
+            ) as update_tool,
+            patch.dict("os.environ", {"CAREER_AGENT_MODE": "llm"}),
+            patch(
+                "builtins.input",
+                side_effect=[
+                    "test_user",
+                    "update",
+                    "更新Agent进度",
+                    "CONFIRM"
+                ]
+            ),
+            redirect_stdout(output)
+        ):
+            main_module.main()
+
+        update_tool.assert_called_once_with(
+            "test_user",
+            "agent_progress",
+            "CareerAgent V0.7确认流程",
+            "study_progress.json"
+        )
+        final_output = output.getvalue().split("最终结果：", maxsplit=1)[1]
+        result = json.loads(final_output)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["used_tools"], ["update_study_progress"])
+        self.assertEqual(result["agent_loop"]["stop_reason"], "completed")
+        self.assertEqual(
+            [item["action"] for item in result["agent_loop"]["trace"]],
+            [
+                "qwen_update_proposal",
+                "user_confirmation",
+                "update_study_progress"
+            ]
+        )
 
 
 if __name__ == "__main__":

@@ -202,11 +202,42 @@ OK
 - `mode=llm_tool_calling`、`stop_reason=completed`，本次使用 1032 Tokens。
 - 脱敏输出保存在 `examples/careeragent_v0_6_review_topics_output.json`。
 
+## 2026-09-14：V0.7 受控写入确认
+
+主要成果：
+
+- 主流程新增 `advice/update` 操作选择，直接回车仍进入只读建议流程。
+- 只有用户明确选择 `update` 并输入更新要求后，千问才会生成写入参数提案。
+- 写入提案通过固定的 `update_study_progress` 工具 Schema 约束。
+- Python 再次验证当前用户名、字段白名单和值结构，不信任模型直接写入。
+- 提案阶段用 `requested_tools` 记录模型请求，用空的 `used_tools` 明确表示工具尚未执行。
+- 提案生成后先展示给用户，只有精确输入 `CONFIRM` 才会执行写入。
+- 其他确认输入会以 `user_cancelled` 停止，且 `used_tools` 保持为空。
+- 确认后执行 `update_study_progress`；写入成功或失败都会进入执行轨迹。
+
+验证证据：
+
+```text
+Ran 41 tests
+OK
+```
+
+- 真实千问提案运行成功，模型提出更新 `agent_progress`，本次使用 579 Tokens。
+- 运行前后 `study_progress.json` 的 SHA-256 完全一致，确认提案阶段没有修改文件。
+- 确认、取消和写入失败分支均通过离线测试；确认分支还在临时 JSON 上完成了真实保存与重新读取。
+- 脱敏输出保存在 `examples/careeragent_v0_7_update_proposal_output.json`。
+- 用户随后在真实主流程中检查提案并亲自输入 `CONFIRM`。
+- 最终状态为 `completed`，`update_study_progress` 执行成功，本次使用 583 Tokens。
+- 磁盘文件重新加载成功；`agent_progress` 更新，其他学习进度字段保持不变。
+- 写入后 41 项测试再次通过；依赖演示数据旧值的测试已改用独立临时数据。
+- 脱敏确认结果保存在 `examples/careeragent_v0_7_confirmed_update_output.json`。
+
+当前边界：V0.7 受控写入已经完成端到端验收；README 运行截图和本地版本提交仍待完成。
+
 ## 当前版本之后的候选工作
 
 以下内容没有包含在上述已完成版本中，应以当前 `PROJECT_STATUS.md` 为准决定是否实施：
 
-- 为写入工具增加明确意图、参数预览和用户确认。
 - 保存 README 运行截图。
 - 如需公开发布，创建远程仓库并在推送前再次检查公开内容。
 

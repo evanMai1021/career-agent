@@ -4,7 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from qwen_agent import run_qwen_agent_loop
+from qwen_agent import run_qwen_agent_loop, run_qwen_update_proposal
 
 
 # 用户基础资料只负责身份和求职目标；学习进度由工具单独读取。
@@ -127,6 +127,20 @@ def validate_review_tasks(review_tasks):
     return None
 
 
+def validate_study_progress_update(field, new_value):
+    """只验证一次学习进度更新的字段和值，不读取或修改文件。"""
+    if field not in STUDY_PROGRESS_FIELDS:
+        return f"不允许更新学习进度字段：{field}"
+
+    if field in STUDY_TEXT_FIELDS and not isinstance(new_value, str):
+        return f"学习进度字段必须是字符串：{field}"
+
+    if field == "review_tasks":
+        return validate_review_tasks(new_value)
+
+    return None
+
+
 def get_study_progress(username, progress_file):
     """读取指定用户的学习进度，并返回可序列化的结构化结果。"""
     # 工具函数复用现有加载能力，并关闭加载函数的控制台提示。
@@ -185,17 +199,10 @@ def get_study_progress(username, progress_file):
 
 def update_study_progress(username, field, new_value, progress_file):
     """更新一个学习进度字段，并将结果保存回本地 JSON 文件。"""
-    # 只允许更新学习进度字段，防止工具改动用户名或其他未知数据。
-    if field not in STUDY_PROGRESS_FIELDS:
-        return {"ok": False, "error": f"不允许更新学习进度字段：{field}"}
-
-    # 不同字段使用不同类型：三个进度字段是字符串，复习任务是字符串列表。
-    if field in STUDY_TEXT_FIELDS and not isinstance(new_value, str):
-        return {"ok": False, "error": f"学习进度字段必须是字符串：{field}"}
-    if field == "review_tasks":
-        review_tasks_error = validate_review_tasks(new_value)
-        if review_tasks_error:
-            return {"ok": False, "error": review_tasks_error}
+    # 模型提案和真正写入复用同一套验证，避免两处规则逐渐不一致。
+    validation_error = validate_study_progress_update(field, new_value)
+    if validation_error:
+        return {"ok": False, "error": validation_error}
 
     # 先通过只读工具完成文件、用户名和原资料结构验证。
     current_result = get_study_progress(username, progress_file)
@@ -227,6 +234,68 @@ def update_study_progress(username, field, new_value, progress_file):
         "username": username,
         "updated_field": field,
         "progress": updated_progress
+    }
+
+
+def resolve_update_proposal(
+    proposal,
+    confirmation,
+    progress_file,
+    update_tool=update_study_progress
+):
+    """根据用户确认决定取消或执行写入，并记录可审计结果。"""
+    if confirmation.strip() != "CONFIRM":
+        return {
+            "ok": True,
+            "status": "cancelled",
+            "used_tools": [],
+            "stop_reason": "user_cancelled",
+            "trace": [
+                {
+                    "step": 2,
+                    "action": "user_confirmation",
+                    "status": "rejected"
+                }
+            ]
+        }
+
+    trace = [
+        {
+            "step": 2,
+            "action": "user_confirmation",
+            "status": "confirmed"
+        }
+    ]
+    update_result = update_tool(
+        proposal["username"],
+        proposal["field"],
+        proposal["new_value"],
+        progress_file
+    )
+    trace.append({
+        "step": 3,
+        "action": "update_study_progress",
+        "status": "success" if update_result["ok"] else "error"
+    })
+
+    if not update_result["ok"]:
+        return {
+            "ok": False,
+            "status": "update_failed",
+            "error": update_result["error"],
+            "used_tools": ["update_study_progress"],
+            "stop_reason": "tool_error",
+            "trace": trace
+        }
+
+    return {
+        "ok": True,
+        "status": "completed",
+        "used_tools": ["update_study_progress"],
+        "stop_reason": "completed",
+        "trace": trace,
+        "updated_field": update_result["updated_field"],
+        "progress": update_result["progress"]
     }
 
 
@@ -322,6 +391,99 @@ def main():
         user_profile = all_users[username]
         # 基础资料只验证目标岗位等用户信息，不再直接提供学习进度。
         validate_user_profile(user_profile)
+
+        # advice 是只读建议流程；update 当前只生成提案，不会修改文件。
+        action = input(
+            "请选择操作（advice/update，直接回车默认为advice）："
+        ).strip().lower()
+        action_aliases = {"": "advice", "建议": "advice", "更新": "update"}
+        action = action_aliases.get(action, action)
+
+        if action not in {"advice", "update"}:
+            result = {
+                "username": username,
+                "target_role": user_profile["target_role"],
+                "error": "操作只能是advice或update。"
+            }
+            print(json.dumps(result, ensure_ascii=False, indent=4))
+            return
+
+        if action == "update":
+            if agent_mode != "llm":
+                result = {
+                    "username": username,
+                    "target_role": user_profile["target_role"],
+                    "used_tools": [],
+                    "requested_tools": [],
+                    "error": "更新提案目前只支持llm模式。"
+                }
+                print(json.dumps(result, ensure_ascii=False, indent=4))
+                return
+
+            user_request = input("请输入明确的更新要求：")
+            proposal_result = run_qwen_update_proposal(
+                username=username,
+                target_role=user_profile["target_role"],
+                user_request=user_request,
+                validate_update=validate_study_progress_update
+            )
+            base_result = {
+                "username": username,
+                "target_role": user_profile["target_role"],
+                "used_tools": proposal_result.get("used_tools", []),
+                "requested_tools": proposal_result.get("requested_tools", []),
+                "agent_loop": proposal_result.get("agent_loop"),
+                "model": proposal_result.get("model"),
+                "llm_usage": proposal_result.get("llm_usage")
+            }
+            if not proposal_result["ok"]:
+                base_result["error"] = proposal_result["error"]
+                print(json.dumps(base_result, ensure_ascii=False, indent=4))
+                return
+
+            # 必须先展示模型提案，再询问用户；不能把确认藏在模型回复中。
+            proposal = proposal_result["write_proposal"]
+            print("\n更新提案：")
+            print(json.dumps(proposal, ensure_ascii=False, indent=4))
+            confirmation = input(
+                "如确认写入，请输入CONFIRM；其他输入将取消："
+            )
+            resolution = resolve_update_proposal(
+                proposal,
+                confirmation,
+                "study_progress.json",
+                update_tool=update_study_progress
+            )
+
+            # 把模型提案、用户确认和工具执行合并成一条完整轨迹。
+            result = {
+                "username": username,
+                "target_role": user_profile["target_role"],
+                "requested_tools": proposal_result["requested_tools"],
+                "used_tools": resolution["used_tools"],
+                "model": proposal_result["model"],
+                "llm_usage": proposal_result["llm_usage"],
+                "status": resolution["status"],
+                "write_proposal": proposal,
+                "agent_loop": {
+                    "mode": "llm_confirmed_update",
+                    "max_steps": 3,
+                    "stop_reason": resolution["stop_reason"],
+                    "trace": (
+                        proposal_result["agent_loop"]["trace"]
+                        + resolution["trace"]
+                    )
+                }
+            }
+            if resolution["ok"] and resolution["status"] == "completed":
+                result["updated_field"] = resolution["updated_field"]
+                result["progress"] = resolution["progress"]
+            elif not resolution["ok"]:
+                result["error"] = resolution["error"]
+
+            print("\n最终结果：")
+            print(json.dumps(result, ensure_ascii=False, indent=4))
+            return
 
         if agent_mode == "llm":
             # 千问决定何时调用只读工具，程序负责执行并限制工具权限。
