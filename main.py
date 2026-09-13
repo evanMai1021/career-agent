@@ -15,6 +15,7 @@ REQUIRED_PROFILE_FIELDS = [
 # 学习进度工具允许读取和更新的字段。
 STUDY_TEXT_FIELDS = ["python_progress", "leetcode_topic", "agent_progress"]
 STUDY_PROGRESS_FIELDS = STUDY_TEXT_FIELDS + ["review_tasks"]
+REVIEW_TASK_FIELDS = ["problem_id", "title", "topic"]
 
 
 def validate_user_profile(user_profile):
@@ -105,6 +106,27 @@ def load_users(file_path, show_errors=True):
     return users
 
 
+def validate_review_tasks(review_tasks):
+    """验证复习任务是否为只含题号、题名和专题的字典列表。"""
+    if not isinstance(review_tasks, list):
+        return "用户学习进度字段必须是列表：review_tasks"
+
+    required_fields = set(REVIEW_TASK_FIELDS)
+    for index, task in enumerate(review_tasks, start=1):
+        if not isinstance(task, dict):
+            return f"第{index}项复习任务必须是对象。"
+        if set(task) != required_fields:
+            return (
+                f"第{index}项复习任务必须且只能包含字段："
+                "problem_id、title、topic。"
+            )
+        for field in REVIEW_TASK_FIELDS:
+            if not isinstance(task[field], str) or not task[field].strip():
+                return f"第{index}项复习任务字段必须是非空字符串：{field}"
+
+    return None
+
+
 def get_study_progress(username, progress_file):
     """读取指定用户的学习进度，并返回可序列化的结构化结果。"""
     # 工具函数复用现有加载能力，并关闭加载函数的控制台提示。
@@ -137,17 +159,22 @@ def get_study_progress(username, progress_file):
 
     if "review_tasks" not in user_progress:
         return {"ok": False, "error": "用户学习进度缺少必要字段：review_tasks"}
-    if not isinstance(user_progress["review_tasks"], list):
-        return {"ok": False, "error": "用户学习进度字段必须是列表：review_tasks"}
-    if not all(isinstance(task, str) for task in user_progress["review_tasks"]):
-        return {"ok": False, "error": "复习任务列表中的每一项都必须是字符串。"}
+    review_tasks_error = validate_review_tasks(user_progress["review_tasks"])
+    if review_tasks_error:
+        return {"ok": False, "error": review_tasks_error}
 
     # 只输出约定字段，避免把文件里的其他数据意外暴露给后续调用者。
     progress = {
         "python_progress": user_progress["python_progress"],
         "leetcode_topic": user_progress["leetcode_topic"],
         "agent_progress": user_progress["agent_progress"],
-        "review_tasks": user_progress["review_tasks"]
+        "review_tasks": [
+            {
+                field: task[field].strip()
+                for field in REVIEW_TASK_FIELDS
+            }
+            for task in user_progress["review_tasks"]
+        ]
     }
     return {
         "ok": True,
@@ -165,11 +192,10 @@ def update_study_progress(username, field, new_value, progress_file):
     # 不同字段使用不同类型：三个进度字段是字符串，复习任务是字符串列表。
     if field in STUDY_TEXT_FIELDS and not isinstance(new_value, str):
         return {"ok": False, "error": f"学习进度字段必须是字符串：{field}"}
-    if field == "review_tasks" and (
-        not isinstance(new_value, list)
-        or not all(isinstance(task, str) for task in new_value)
-    ):
-        return {"ok": False, "error": "review_tasks必须是字符串列表。"}
+    if field == "review_tasks":
+        review_tasks_error = validate_review_tasks(new_value)
+        if review_tasks_error:
+            return {"ok": False, "error": review_tasks_error}
 
     # 先通过只读工具完成文件、用户名和原资料结构验证。
     current_result = get_study_progress(username, progress_file)

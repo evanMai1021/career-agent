@@ -163,6 +163,9 @@ def run_qwen_agent_loop(
                 "最终JSON最外层只能包含python、leetcode、agent三个字段。"
                 "task说明具体做什么，reason说明它与当前进度的关系。"
                 "不得虚构用户已经完成的学习内容。"
+                "review_tasks中的topic是每道复习题的真实专题；"
+                "leetcode_topic只是当前主线专题，不得用它覆盖每道题自己的topic。"
+                "reason只能引用工具结果中存在的事实，不得强行建立未经提供的技术关联。"
             )
         },
         {

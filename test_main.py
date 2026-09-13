@@ -18,6 +18,20 @@ from main import (
 from qwen_agent import run_qwen_agent_loop
 
 
+SAMPLE_REVIEW_TASKS = [
+    {
+        "problem_id": "560",
+        "title": "和为K的子数组",
+        "topic": "前缀和与哈希表"
+    },
+    {
+        "problem_id": "283",
+        "title": "移动零",
+        "topic": "双指针"
+    }
+]
+
+
 def make_qwen_response(content=None, tool_calls=None, prompt_tokens=10, completion_tokens=5):
     """创建不访问网络的千问响应替身。"""
     return SimpleNamespace(
@@ -230,8 +244,8 @@ class GetStudyProgressTests(unittest.TestCase):
                 "progress": {
                     "python_progress": "在CareerAgent中学习函数与测试",
                     "leetcode_topic": "滑动窗口",
-                    "agent_progress": "CareerAgent V0.5已接入千问只读工具调用与结构化输出",
-                    "review_tasks": ["560", "283"]
+                    "agent_progress": "CareerAgent V0.6已完成复习题题号与真实专题结构化",
+                    "review_tasks": SAMPLE_REVIEW_TASKS
                 }
             }
         )
@@ -286,6 +300,91 @@ class GetStudyProgressTests(unittest.TestCase):
             {"ok": False, "error": "用户学习进度必须是对象。"}
         )
 
+    def test_rejects_legacy_string_review_tasks(self):
+        """旧版题号字符串列表会被拦截，避免模型继续猜测题型。"""
+        with TemporaryDirectory() as temp_dir:
+            progress_file = Path(temp_dir) / "progress.json"
+            progress_file.write_text(
+                json.dumps({
+                    "test_user": {
+                        "python_progress": "学习函数与测试",
+                        "leetcode_topic": "滑动窗口",
+                        "agent_progress": "CareerAgent V0.5完成",
+                        "review_tasks": ["560"]
+                    }
+                }, ensure_ascii=False),
+                encoding="utf-8"
+            )
+
+            result = get_study_progress("test_user", progress_file)
+
+        self.assertEqual(
+            result,
+            {"ok": False, "error": "第1项复习任务必须是对象。"}
+        )
+
+    def test_rejects_review_task_with_missing_topic(self):
+        """缺少专题的复习任务不能交给模型。"""
+        with TemporaryDirectory() as temp_dir:
+            progress_file = Path(temp_dir) / "progress.json"
+            progress_file.write_text(
+                json.dumps({
+                    "test_user": {
+                        "python_progress": "学习函数与测试",
+                        "leetcode_topic": "滑动窗口",
+                        "agent_progress": "CareerAgent V0.5完成",
+                        "review_tasks": [{
+                            "problem_id": "560",
+                            "title": "和为K的子数组"
+                        }]
+                    }
+                }, ensure_ascii=False),
+                encoding="utf-8"
+            )
+
+            result = get_study_progress("test_user", progress_file)
+
+        self.assertEqual(
+            result,
+            {
+                "ok": False,
+                "error": (
+                    "第1项复习任务必须且只能包含字段："
+                    "problem_id、title、topic。"
+                )
+            }
+        )
+
+    def test_rejects_empty_review_task_topic(self):
+        """专题字段虽然是字符串，但空白内容仍然不合格。"""
+        with TemporaryDirectory() as temp_dir:
+            progress_file = Path(temp_dir) / "progress.json"
+            progress_file.write_text(
+                json.dumps({
+                    "test_user": {
+                        "python_progress": "学习函数与测试",
+                        "leetcode_topic": "滑动窗口",
+                        "agent_progress": "CareerAgent V0.5完成",
+                        "review_tasks": [{
+                            "problem_id": "560",
+                            "title": "和为K的子数组",
+                            "topic": "   "
+                        }]
+                    }
+                }, ensure_ascii=False),
+                encoding="utf-8"
+            )
+
+            result = get_study_progress("test_user", progress_file)
+
+        self.assertEqual(
+            result,
+            {
+                "ok": False,
+                "error": "第1项复习任务字段必须是非空字符串：topic"
+            }
+        )
+
 
 class UpdateStudyProgressTests(unittest.TestCase):
     """验证第二个工具只更新合法字段并保存到本地 JSON。"""
@@ -299,7 +398,7 @@ class UpdateStudyProgressTests(unittest.TestCase):
                 "python_progress": "学习函数与测试",
                 "leetcode_topic": "滑动窗口",
                 "agent_progress": "CareerAgent V0.2完成",
-                "review_tasks": ["560", "283"]
+                "review_tasks": SAMPLE_REVIEW_TASKS
             }
         }
         self.progress_file.write_text(
@@ -369,6 +468,43 @@ class UpdateStudyProgressTests(unittest.TestCase):
             {"ok": False, "error": "未找到用户：missing_user"}
         )
 
+    def test_updates_structured_review_tasks(self):
+        """合法的题号、题名和专题字典列表可以保存。"""
+        new_tasks = [{
+            "problem_id": "76",
+            "title": "最小覆盖子串",
+            "topic": "滑动窗口"
+        }]
+
+        result = update_study_progress(
+            "test_user",
+            "review_tasks",
+            new_tasks,
+            self.progress_file
+        )
+
+        saved_data = json.loads(self.progress_file.read_text(encoding="utf-8"))
+        self.assertTrue(result["ok"])
+        self.assertEqual(saved_data["test_user"]["review_tasks"], new_tasks)
+
+    def test_rejects_malformed_review_tasks_without_changing_file(self):
+        """缺少专题的写入值会被拒绝，原文件保持不变。"""
+        invalid_tasks = [{
+            "problem_id": "76",
+            "title": "最小覆盖子串"
+        }]
+
+        result = update_study_progress(
+            "test_user",
+            "review_tasks",
+            invalid_tasks,
+            self.progress_file
+        )
+
+        saved_data = json.loads(self.progress_file.read_text(encoding="utf-8"))
+        self.assertFalse(result["ok"])
+        self.assertEqual(saved_data, self.original_data)
+
 
 class ControlledAgentLoopTests(unittest.TestCase):
     """验证规则版循环能完成、遇错停止并遵守最大步数。"""
@@ -382,7 +518,7 @@ class ControlledAgentLoopTests(unittest.TestCase):
                 "python_progress": "学习函数与测试",
                 "leetcode_topic": "滑动窗口",
                 "agent_progress": "CareerAgent V0.3完成",
-                "review_tasks": ["560", "283"]
+                "review_tasks": SAMPLE_REVIEW_TASKS
             }
         }
 
@@ -484,7 +620,7 @@ class QwenAgentLoopTests(unittest.TestCase):
                 "python_progress": "学习函数与测试",
                 "leetcode_topic": "滑动窗口",
                 "agent_progress": "CareerAgent V0.4完成",
-                "review_tasks": ["560", "283"]
+                "review_tasks": SAMPLE_REVIEW_TASKS
             }
         })
 
@@ -614,7 +750,7 @@ class MainFlowTests(unittest.TestCase):
                 "python_progress": "学习函数与测试",
                 "leetcode_topic": "滑动窗口",
                 "agent_progress": "CareerAgent V0完成",
-                "review_tasks": ["560", "283"]
+                "review_tasks": SAMPLE_REVIEW_TASKS
             }
         }
         output = StringIO()
