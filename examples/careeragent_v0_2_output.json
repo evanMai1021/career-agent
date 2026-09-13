@@ -1,0 +1,18 @@
+{
+  "username": "test_user",
+  "target_role": "AI Agent开发",
+  "used_tools": [
+    "get_study_progress"
+  ],
+  "advice": {
+    "agent": {
+      "task": "继续推进CareerAgent项目。",
+      "reason": "当前资料未触发更具体的Agent项目建议。"
+    },
+    "leetcode": {
+      "task": "继续完成最小覆盖子串。",
+      "reason": "当前算法专题为滑动窗口。"
+    },
+    "python": "继续按照当前Python计划学习。"
+  }
+}

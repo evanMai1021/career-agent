@@ -1,0 +1,8 @@
+{
+  "test_user": {
+    "python_progress": "在CareerAgent中学习函数与测试",
+    "leetcode_topic": "滑动窗口",
+    "agent_progress": "CareerAgent V0.5已接入千问只读工具调用与结构化输出",
+    "review_tasks": ["560", "283"]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "username": "test_user",
+  "target_role": "AI Agent开发",
+  "used_tools": [
+    "get_study_progress"
+  ],
+  "agent_loop": {
+    "mode": "rule_based",
+    "max_steps": 3,
+    "stop_reason": "completed",
+    "trace": [
+      {
+        "step": 1,
+        "action": "get_study_progress",
+        "status": "success"
+      },
+      {
+        "step": 2,
+        "action": "generate_advice",
+        "status": "success"
+      }
+    ]
+  },
+  "advice": {
+    "agent": {
+      "task": "继续推进CareerAgent项目。",
+      "reason": "当前资料未触发更具体的Agent项目建议。"
+    },
+    "leetcode": {
+      "task": "继续完成最小覆盖子串。",
+      "reason": "当前算法专题为滑动窗口。"
+    },
+    "python": "继续按照当前Python计划学习。"
+  }
+}

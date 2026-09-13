@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "username": "test_user",
+  "updated_field": "agent_progress",
+  "progress": {
+    "python_progress": "在CareerAgent中学习函数与测试",
+    "leetcode_topic": "滑动窗口",
+    "agent_progress": "CareerAgent V0.3完成",
+    "review_tasks": [
+      "560",
+      "283"
+    ]
+  }
+}
