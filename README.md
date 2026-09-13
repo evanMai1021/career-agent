@@ -2,13 +2,17 @@
 
 CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读取脱敏的学习进度，让千问模型选择只读工具，并输出 Python、LeetCode 和 Agent 三类结构化建议。
 
-版本演进与历史验证证据见 `CAREER_AGENT_HISTORY.md`。
+## 文档导航
+
+- 当前功能、验证结果和下一步：[`PROJECT_STATUS.md`](PROJECT_STATUS.md)
+- 第一版包含与不包含的范围：[`PROJECT_SCOPE.md`](PROJECT_SCOPE.md)
+- 版本演进与历史验证证据：[`CAREER_AGENT_HISTORY.md`](CAREER_AGENT_HISTORY.md)
 
 ## 当前功能
 
 - 加载并验证用户基础资料。
 - 使用 `get_study_progress` 读取指定用户的学习进度。
-- 使用 `update_study_progress` 更新白名单内的学习进度字段。
+- 已实现受白名单约束的本地更新工具 `update_study_progress`，但尚未开放给模型自动调用。
 - 使用千问 `qwen3.8-flash` 进行 Function Calling（函数调用）。
 - 使用 JSON Schema 约束模型输出结构。
 - 限制 Agent 最大循环步数，并记录工具、轨迹和停止原因。

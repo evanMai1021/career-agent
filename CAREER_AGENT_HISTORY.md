@@ -172,6 +172,14 @@ OK
 - 用户随后在 PyCharm 中再次运行成功，使用 924 Tokens，退出码为 0。
 - 脱敏结果保存在 `examples/careeragent_v0_5_qwen_output.json`。
 
+## 2026-09-14：本地 Git 基线
+
+- 在 `D:\Projects\agent_project` 初始化本地 Git 仓库，默认分支为 `main`。
+- 使用个人全局 Git 身份创建首次提交：`ce8cba2 feat: add CareerAgent V0.5`。
+- 首次提交包含 16 个公开项目文件；`.env`、虚拟环境、IDE 配置、私人学习记录和本地协作文档均由 `.gitignore` 排除。
+- 提交前使用项目虚拟环境运行 26 项离线测试，结果为 `OK`。
+- 当前尚未创建或连接 GitHub 等远程仓库，代码仍只保存在本地。
+
 ## 当前版本之后的候选工作
 
 以下内容没有包含在上述已完成版本中，应以当前 `PROJECT_STATUS.md` 为准决定是否实施：
@@ -182,11 +190,3 @@ OK
 - 如需公开发布，创建远程仓库并在推送前再次检查公开内容。
 
 第一版范围仍不包含 RAG、多 Agent、网页前端、自动岗位搜索、自动投递和云部署。
-
-## 2026-09-14：本地 Git 基线
-
-- 在 `D:\Projects\agent_project` 初始化本地 Git 仓库，默认分支为 `main`。
-- 使用个人全局 Git 身份创建首次提交：`ce8cba2 feat: add CareerAgent V0.5`。
-- 首次提交包含 16 个公开项目文件；`.env`、虚拟环境、IDE 配置、私人学习记录和本地协作文档均由 `.gitignore` 排除。
-- 提交前使用项目虚拟环境运行 26 项离线测试，结果为 `OK`。
-- 当前尚未创建或连接 GitHub 等远程仓库，代码仍只保存在本地。
