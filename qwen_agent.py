@@ -10,7 +10,23 @@ from openai import OpenAI
 QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_QWEN_MODEL = "qwen3.8-flash"
 
-# 严格限制模型最终输出的结构，便于主流程稳定读取三类建议。
+# 复习任务在工具参数和建议来源中复用同一份结构约束。
+REVIEW_TASK_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "problem_id": {"type": "integer"},
+        "title": {"type": "string"},
+        "topics": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "status": {"type": "string"}
+    },
+    "required": ["problem_id", "title", "topics", "status"],
+    "additionalProperties": False
+}
+
+# 建议必须携带结构化数据来源，便于 Python 与工具结果逐项核对。
 ADVICE_RESPONSE_FORMAT = {
     "type": "json_schema",
     "json_schema": {
@@ -20,16 +36,61 @@ ADVICE_RESPONSE_FORMAT = {
         "schema": {
             "type": "object",
             "properties": {
-                category: {
+                "python": {
                     "type": "object",
                     "properties": {
                         "task": {"type": "string"},
-                        "reason": {"type": "string"}
+                        "reason": {"type": "string"},
+                        "sources": {
+                            "type": "object",
+                            "properties": {
+                                "python_progress": {"type": "string"}
+                            },
+                            "required": ["python_progress"],
+                            "additionalProperties": False
+                        }
                     },
-                    "required": ["task", "reason"],
+                    "required": ["task", "reason", "sources"],
+                    "additionalProperties": False
+                },
+                "leetcode": {
+                    "type": "object",
+                    "properties": {
+                        "task": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "sources": {
+                            "type": "object",
+                            "properties": {
+                                "leetcode_topic": {"type": "string"},
+                                "review_tasks": {
+                                    "type": "array",
+                                    "items": REVIEW_TASK_SCHEMA
+                                }
+                            },
+                            "required": ["leetcode_topic", "review_tasks"],
+                            "additionalProperties": False
+                        }
+                    },
+                    "required": ["task", "reason", "sources"],
+                    "additionalProperties": False
+                },
+                "agent": {
+                    "type": "object",
+                    "properties": {
+                        "task": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "sources": {
+                            "type": "object",
+                            "properties": {
+                                "agent_progress": {"type": "string"}
+                            },
+                            "required": ["agent_progress"],
+                            "additionalProperties": False
+                        }
+                    },
+                    "required": ["task", "reason", "sources"],
                     "additionalProperties": False
                 }
-                for category in ("python", "leetcode", "agent")
             },
             "required": ["python", "leetcode", "agent"],
             "additionalProperties": False
@@ -85,16 +146,7 @@ UPDATE_STUDY_PROGRESS_TOOL = {
                         {"type": "string"},
                         {
                             "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "problem_id": {"type": "string"},
-                                    "title": {"type": "string"},
-                                    "topic": {"type": "string"}
-                                },
-                                "required": ["problem_id", "title", "topic"],
-                                "additionalProperties": False
-                            }
+                            "items": REVIEW_TASK_SCHEMA
                         }
                     ]
                 }
@@ -139,21 +191,39 @@ def _add_usage(total_usage, response):
     total_usage["total_tokens"] += getattr(usage, "total_tokens", 0) or 0
 
 
-def _validate_advice(advice):
-    """在本地再次验证模型建议，防止异常响应进入最终结果。"""
-    if not isinstance(advice, dict):
+def _validate_advice(advice, study_progress):
+    """验证建议结构，并确认模型声明的来源与工具结果完全一致。"""
+    if not isinstance(advice, dict) or not isinstance(study_progress, dict):
         return False
 
     for category in ("python", "leetcode", "agent"):
         item = advice.get(category)
         if not isinstance(item, dict):
             return False
-        if set(item) != {"task", "reason"}:
+        if set(item) != {"task", "reason", "sources"}:
             return False
-        if not all(isinstance(item[field], str) for field in ("task", "reason")):
+        if not all(
+            isinstance(item[field], str) and item[field].strip()
+            for field in ("task", "reason")
+        ):
             return False
 
-    return True
+    expected_sources = {
+        "python": {
+            "python_progress": study_progress.get("python_progress")
+        },
+        "leetcode": {
+            "leetcode_topic": study_progress.get("leetcode_topic"),
+            "review_tasks": study_progress.get("review_tasks")
+        },
+        "agent": {
+            "agent_progress": study_progress.get("agent_progress")
+        }
+    }
+    return all(
+        advice[category]["sources"] == expected_sources[category]
+        for category in ("python", "leetcode", "agent")
+    )
 
 
 def _model_error_result(model, max_steps, trace, used_tools, usage, error):
@@ -373,6 +443,7 @@ def run_qwen_agent_loop(
     trace = []
     used_tools = []
     usage = _empty_usage()
+    study_progress = None
 
     if client is None:
         try:
@@ -393,9 +464,12 @@ def run_qwen_agent_loop(
                 "最终JSON最外层只能包含python、leetcode、agent三个字段。"
                 "task说明具体做什么，reason说明它与当前进度的关系。"
                 "不得虚构用户已经完成的学习内容。"
-                "review_tasks中的topic是每道复习题的真实专题；"
-                "leetcode_topic只是当前主线专题，不得用它覆盖每道题自己的topic。"
+                "review_tasks中的topics是每道复习题经过本地校验的真实专题；"
+                "leetcode_topic只是当前主线专题，不得用它覆盖每道题自己的topics。"
                 "reason只能引用工具结果中存在的事实，不得强行建立未经提供的技术关联。"
+                "每类建议都必须在sources中原样复制对应工具数据："
+                "Python复制python_progress，Agent复制agent_progress，"
+                "LeetCode复制leetcode_topic和完整review_tasks，不得改写题目来源。"
             )
         },
         {
@@ -537,6 +611,7 @@ def run_qwen_agent_loop(
                         }
                     }
 
+                study_progress = tool_result["progress"]
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
@@ -552,7 +627,7 @@ def run_qwen_agent_loop(
         except json.JSONDecodeError:
             advice = None
 
-        if not _validate_advice(advice):
+        if not _validate_advice(advice, study_progress):
             trace.append({
                 "step": step,
                 "action": "qwen_structured_advice",

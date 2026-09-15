@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import main as main_module
 from main import (
+    REVIEW_TASK_CATALOG,
     generate_advice,
     get_study_progress,
     resolve_update_proposal,
@@ -22,14 +23,16 @@ from qwen_agent import run_qwen_agent_loop, run_qwen_update_proposal
 
 SAMPLE_REVIEW_TASKS = [
     {
-        "problem_id": "560",
+        "problem_id": 560,
         "title": "和为K的子数组",
-        "topic": "前缀和与哈希表"
+        "topics": ["前缀和", "哈希表"],
+        "status": "待复习"
     },
     {
-        "problem_id": "283",
+        "problem_id": 283,
         "title": "移动零",
-        "topic": "双指针"
+        "topics": ["双指针", "数组"],
+        "status": "待复习"
     }
 ]
 
@@ -339,7 +342,7 @@ class GetStudyProgressTests(unittest.TestCase):
             {"ok": False, "error": "第1项复习任务必须是对象。"}
         )
 
-    def test_rejects_review_task_with_missing_topic(self):
+    def test_rejects_review_task_with_missing_topics_and_status(self):
         """缺少专题的复习任务不能交给模型。"""
         with TemporaryDirectory() as temp_dir:
             progress_file = Path(temp_dir) / "progress.json"
@@ -350,7 +353,7 @@ class GetStudyProgressTests(unittest.TestCase):
                         "leetcode_topic": "滑动窗口",
                         "agent_progress": "CareerAgent V0.5完成",
                         "review_tasks": [{
-                            "problem_id": "560",
+                            "problem_id": 560,
                             "title": "和为K的子数组"
                         }]
                     }
@@ -366,13 +369,13 @@ class GetStudyProgressTests(unittest.TestCase):
                 "ok": False,
                 "error": (
                     "第1项复习任务必须且只能包含字段："
-                    "problem_id、title、topic。"
+                    "problem_id、title、topics、status。"
                 )
             }
         )
 
     def test_rejects_empty_review_task_topic(self):
-        """专题字段虽然是字符串，但空白内容仍然不合格。"""
+        """topics 列表中的空白字符串仍然不合格。"""
         with TemporaryDirectory() as temp_dir:
             progress_file = Path(temp_dir) / "progress.json"
             progress_file.write_text(
@@ -382,9 +385,10 @@ class GetStudyProgressTests(unittest.TestCase):
                         "leetcode_topic": "滑动窗口",
                         "agent_progress": "CareerAgent V0.5完成",
                         "review_tasks": [{
-                            "problem_id": "560",
+                            "problem_id": 560,
                             "title": "和为K的子数组",
-                            "topic": "   "
+                            "topics": ["前缀和", "   "],
+                            "status": "待复习"
                         }]
                     }
                 }, ensure_ascii=False),
@@ -397,7 +401,94 @@ class GetStudyProgressTests(unittest.TestCase):
             result,
             {
                 "ok": False,
-                "error": "第1项复习任务字段必须是非空字符串：topic"
+                "error": "题号560的topics必须只包含非空字符串。"
+            }
+        )
+
+    def test_rejects_wrong_topic_mapping(self):
+        """560 被错误标成双指针时，本地目录会在模型调用前拒绝。"""
+        with TemporaryDirectory() as temp_dir:
+            progress_file = Path(temp_dir) / "progress.json"
+            progress_file.write_text(
+                json.dumps({
+                    "test_user": {
+                        "python_progress": "学习函数与测试",
+                        "leetcode_topic": "滑动窗口",
+                        "agent_progress": "CareerAgent V0.7完成",
+                        "review_tasks": [{
+                            "problem_id": 560,
+                            "title": "和为K的子数组",
+                            "topics": ["双指针", "数组"],
+                            "status": "待复习"
+                        }]
+                    }
+                }, ensure_ascii=False),
+                encoding="utf-8"
+            )
+
+            result = get_study_progress("test_user", progress_file)
+
+        self.assertEqual(
+            result,
+            {"ok": False, "error": "题号560的专题与本地目录不一致。"}
+        )
+
+    def test_rejects_unknown_problem_id(self):
+        """本地目录没有收录的题号不能直接进入模型上下文。"""
+        with TemporaryDirectory() as temp_dir:
+            progress_file = Path(temp_dir) / "progress.json"
+            progress_file.write_text(
+                json.dumps({
+                    "test_user": {
+                        "python_progress": "学习函数与测试",
+                        "leetcode_topic": "滑动窗口",
+                        "agent_progress": "CareerAgent V0.7完成",
+                        "review_tasks": [{
+                            "problem_id": 999,
+                            "title": "未知题目",
+                            "topics": ["未知专题"],
+                            "status": "待复习"
+                        }]
+                    }
+                }, ensure_ascii=False),
+                encoding="utf-8"
+            )
+
+            result = get_study_progress("test_user", progress_file)
+
+        self.assertEqual(
+            result,
+            {"ok": False, "error": "第1项复习任务题号不在本地目录：999"}
+        )
+
+
+class ReviewTaskCatalogTests(unittest.TestCase):
+    """锁定当前已人工确认的题号、题名与专题事实。"""
+
+    def test_contains_verified_problem_topic_mappings(self):
+        self.assertEqual(
+            REVIEW_TASK_CATALOG,
+            {
+                560: {
+                    "title": "和为K的子数组",
+                    "topics": ["前缀和", "哈希表"]
+                },
+                283: {
+                    "title": "移动零",
+                    "topics": ["双指针", "数组"]
+                },
+                76: {
+                    "title": "最小覆盖子串",
+                    "topics": ["滑动窗口", "哈希表"]
+                },
+                438: {
+                    "title": "找到字符串中所有字母异位词",
+                    "topics": ["滑动窗口", "哈希表"]
+                },
+                239: {
+                    "title": "滑动窗口最大值",
+                    "topics": ["单调队列"]
+                }
             }
         )
 
@@ -428,19 +519,55 @@ class UpdateStudyProgressTests(unittest.TestCase):
 
     def test_updates_and_saves_allowed_field(self):
         """合法字段会更新，重新加载文件也能读到新值。"""
-        result = update_study_progress(
-            "test_user",
-            "agent_progress",
-            "CareerAgent V0.3完成",
-            self.progress_file
-        )
+        with patch.object(
+            main_module,
+            "get_study_progress",
+            wraps=get_study_progress
+        ) as progress_reader:
+            result = update_study_progress(
+                "test_user",
+                "agent_progress",
+                "CareerAgent V0.3完成",
+                self.progress_file
+            )
 
         saved_data = json.loads(self.progress_file.read_text(encoding="utf-8"))
         self.assertTrue(result["ok"])
+        self.assertEqual(progress_reader.call_count, 2)
         self.assertEqual(result["updated_field"], "agent_progress")
         self.assertEqual(
             saved_data["test_user"]["agent_progress"],
             "CareerAgent V0.3完成"
+        )
+
+    def test_rejects_post_write_readback_mismatch(self):
+        """写入后的磁盘回读与提案不一致时，不能返回完成。"""
+        current_result = {
+            "ok": True,
+            "username": "test_user",
+            "progress": self.original_data["test_user"]
+        }
+        stale_readback = {
+            "ok": True,
+            "username": "test_user",
+            "progress": self.original_data["test_user"]
+        }
+
+        with patch.object(
+            main_module,
+            "get_study_progress",
+            side_effect=[current_result, stale_readback]
+        ):
+            result = update_study_progress(
+                "test_user",
+                "agent_progress",
+                "CareerAgent V0.8完成",
+                self.progress_file
+            )
+
+        self.assertEqual(
+            result,
+            {"ok": False, "error": "写入后重新读取结果与提案不一致。"}
         )
 
     def test_rejects_unknown_field_without_changing_file(self):
@@ -487,9 +614,10 @@ class UpdateStudyProgressTests(unittest.TestCase):
     def test_updates_structured_review_tasks(self):
         """合法的题号、题名和专题字典列表可以保存。"""
         new_tasks = [{
-            "problem_id": "76",
+            "problem_id": 76,
             "title": "最小覆盖子串",
-            "topic": "滑动窗口"
+            "topics": ["滑动窗口", "哈希表"],
+            "status": "待复习"
         }]
 
         result = update_study_progress(
@@ -506,7 +634,7 @@ class UpdateStudyProgressTests(unittest.TestCase):
     def test_rejects_malformed_review_tasks_without_changing_file(self):
         """缺少专题的写入值会被拒绝，原文件保持不变。"""
         invalid_tasks = [{
-            "problem_id": "76",
+            "problem_id": 76,
             "title": "最小覆盖子串"
         }]
 
@@ -718,18 +846,34 @@ class QwenAgentLoopTests(unittest.TestCase):
                 arguments=json.dumps({"username": "test_user"})
             )
         )
+        progress = {
+            "python_progress": "学习函数与测试",
+            "leetcode_topic": "滑动窗口",
+            "agent_progress": "CareerAgent V0.4完成",
+            "review_tasks": SAMPLE_REVIEW_TASKS
+        }
         advice = {
             "python": {
                 "task": "复习JSON读写。",
-                "reason": "当前正在学习函数与测试。"
+                "reason": "当前正在学习函数与测试。",
+                "sources": {
+                    "python_progress": progress["python_progress"]
+                }
             },
             "leetcode": {
                 "task": "完成一道滑动窗口题。",
-                "reason": "当前专题是滑动窗口。"
+                "reason": "当前专题是滑动窗口。",
+                "sources": {
+                    "leetcode_topic": progress["leetcode_topic"],
+                    "review_tasks": progress["review_tasks"]
+                }
             },
             "agent": {
                 "task": "验证千问工具调用。",
-                "reason": "当前CareerAgent正在接入LLM。"
+                "reason": "当前CareerAgent正在接入LLM。",
+                "sources": {
+                    "agent_progress": progress["agent_progress"]
+                }
             }
         }
         client = MagicMock()
@@ -740,12 +884,7 @@ class QwenAgentLoopTests(unittest.TestCase):
         progress_tool = MagicMock(return_value={
             "ok": True,
             "username": "test_user",
-            "progress": {
-                "python_progress": "学习函数与测试",
-                "leetcode_topic": "滑动窗口",
-                "agent_progress": "CareerAgent V0.4完成",
-                "review_tasks": SAMPLE_REVIEW_TASKS
-            }
+            "progress": progress
         })
 
         result = run_qwen_agent_loop(
@@ -769,6 +908,82 @@ class QwenAgentLoopTests(unittest.TestCase):
         second_request = client.chat.completions.create.call_args_list[1].kwargs
         self.assertNotIn("tools", second_request)
         self.assertEqual(second_request["response_format"]["type"], "json_schema")
+
+    def test_rejects_model_source_with_wrong_problem_topic_mapping(self):
+        """模型把560关联成双指针时，本地校验拒绝且不重试API。"""
+        tool_call = SimpleNamespace(
+            id="call_wrong_topic",
+            function=SimpleNamespace(
+                name="get_study_progress",
+                arguments=json.dumps({"username": "test_user"})
+            )
+        )
+        progress = {
+            "python_progress": "学习函数与测试",
+            "leetcode_topic": "滑动窗口",
+            "agent_progress": "CareerAgent V0.7完成",
+            "review_tasks": SAMPLE_REVIEW_TASKS
+        }
+        wrong_review_tasks = [
+            {
+                "problem_id": 560,
+                "title": "和为K的子数组",
+                "topics": ["双指针", "数组"],
+                "status": "待复习"
+            },
+            SAMPLE_REVIEW_TASKS[1]
+        ]
+        wrong_advice = {
+            "python": {
+                "task": "复习函数。",
+                "reason": "当前正在学习函数与测试。",
+                "sources": {
+                    "python_progress": progress["python_progress"]
+                }
+            },
+            "leetcode": {
+                "task": "复习560。",
+                "reason": "560需要使用双指针。",
+                "sources": {
+                    "leetcode_topic": progress["leetcode_topic"],
+                    "review_tasks": wrong_review_tasks
+                }
+            },
+            "agent": {
+                "task": "继续开发。",
+                "reason": "当前V0.7已经完成。",
+                "sources": {
+                    "agent_progress": progress["agent_progress"]
+                }
+            }
+        }
+        client = MagicMock()
+        client.chat.completions.create.side_effect = [
+            make_qwen_response(tool_calls=[tool_call]),
+            make_qwen_response(
+                content=json.dumps(wrong_advice, ensure_ascii=False)
+            )
+        ]
+        progress_tool = MagicMock(return_value={
+            "ok": True,
+            "username": "test_user",
+            "progress": progress
+        })
+
+        result = run_qwen_agent_loop(
+            "test_user",
+            "AI Agent开发",
+            "progress.json",
+            progress_tool,
+            client=client
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["agent_loop"]["stop_reason"],
+            "invalid_model_output"
+        )
+        self.assertEqual(client.chat.completions.create.call_count, 2)
 
     def test_rejects_tool_request_for_another_user(self):
         """模型不能绕过当前用户范围读取另一名用户。"""

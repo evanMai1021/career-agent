@@ -1,6 +1,6 @@
 # CareerAgent
 
-CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读取脱敏的学习进度，让千问模型选择只读工具，并输出 Python、LeetCode 和 Agent 三类结构化建议。
+CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读取脱敏的学习进度，让千问模型选择只读工具，并输出带可校验数据来源的 Python、LeetCode 和 Agent 三类结构化建议。
 
 ## 文档导航
 
@@ -18,7 +18,9 @@ CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读
 - 使用 JSON Schema 约束模型输出结构。
 - 限制 Agent 最大循环步数，并记录工具、轨迹和停止原因。
 - 保留不产生 API 费用的本地规则模式。
-- 复习任务使用“题号、题名、真实专题”的结构化字典，减少模型猜测题型。
+- 复习任务使用“整数题号、题名、专题列表、复习状态”的结构化字典。
+- 本地可信目录校验题号、题名与专题映射，错误映射不会进入模型上下文。
+- 模型建议必须携带 `sources`，Python 会与工具返回的数据逐项核对。
 
 普通建议循环只向模型开放 `get_study_progress`。写入提案必须由用户明确选择 `update` 才会生成，确认前不会修改文件。
 
@@ -26,9 +28,28 @@ CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读
 
 ```json
 {
-  "problem_id": "560",
+  "problem_id": 560,
   "title": "和为K的子数组",
-  "topic": "前缀和与哈希表"
+  "topics": ["前缀和", "哈希表"],
+  "status": "待复习"
+}
+```
+
+LeetCode 建议的数据来源示例：
+
+```json
+{
+  "sources": {
+    "leetcode_topic": "滑动窗口",
+    "review_tasks": [
+      {
+        "problem_id": 560,
+        "title": "和为K的子数组",
+        "topics": ["前缀和", "哈希表"],
+        "status": "待复习"
+      }
+    ]
+  }
 }
 ```
 
@@ -97,7 +118,11 @@ CAREER_AGENT_MODE=rule
 脱敏运行证据：
 
 - [`examples/careeragent_v0_6_review_topics_output.json`](examples/careeragent_v0_6_review_topics_output.json)：只读工具与结构化建议。
-- [`examples/careeragent_v0_7_confirmed_update_output.json`](examples/careeragent_v0_7_confirmed_update_output.json)：模型提案、用户确认与写入成功。
+- [`examples/careeragent_v0_7_confirmed_update_output.json`](examples/careeragent_v0_7_confirmed_update_output.json)：模型提案、用户确认与写入成功；其中复习任务保留当时的 V0.7 历史结构。
+
+受控写入运行截图：
+
+![CareerAgent 受控写入：参数提案、用户确认与执行完成](docs/images/careeragent-confirmed-update-run.png)
 
 ## 数据流
 
@@ -105,7 +130,7 @@ CAREER_AGENT_MODE=rule
 启动 main.py
 → 加载并验证用户
 → 选择 advice 或 update
-├─ advice：千问调用只读工具 → 生成结构化建议
+├─ advice：千问调用只读工具 → 生成建议和sources → Python核对来源
 └─ update：千问生成参数提案 → Python验证 → 用户确认 → 执行或取消
 ```
 

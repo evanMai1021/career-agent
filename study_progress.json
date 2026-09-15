@@ -2,17 +2,25 @@
   "test_user": {
     "python_progress": "在CareerAgent中学习函数与测试",
     "leetcode_topic": "滑动窗口",
-    "agent_progress": "CareerAgent V0.7已完成受控写入确认流程",
+    "agent_progress": "已完成Agent基础概念与架构学习，正在实践工具调用（Function Calling）与Prompt编排，下一步计划完成一个多Agent协作项目并整理复盘。",
     "review_tasks": [
       {
-        "problem_id": "560",
+        "problem_id": 560,
         "title": "和为K的子数组",
-        "topic": "前缀和与哈希表"
+        "topics": [
+          "前缀和",
+          "哈希表"
+        ],
+        "status": "待复习"
       },
       {
-        "problem_id": "283",
+        "problem_id": 283,
         "title": "移动零",
-        "topic": "双指针"
+        "topics": [
+          "双指针",
+          "数组"
+        ],
+        "status": "待复习"
       }
     ]
   }
