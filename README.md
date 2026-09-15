@@ -115,6 +115,8 @@ CAREER_AGENT_MODE=rule
 
 单元测试使用模型响应替身，不会真实调用千问，也不会产生模型费用。
 
+V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`，生成的三类建议均携带可核对的 `sources`，并通过 Python 本地来源校验。该次运行没有执行写入工具。
+
 脱敏运行证据：
 
 - [`examples/careeragent_v0_6_review_topics_output.json`](examples/careeragent_v0_6_review_topics_output.json)：只读工具与结构化建议。
