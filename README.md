@@ -122,9 +122,9 @@ V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`
 - [`examples/careeragent_v0_6_review_topics_output.json`](examples/careeragent_v0_6_review_topics_output.json)：只读工具与结构化建议。
 - [`examples/careeragent_v0_7_confirmed_update_output.json`](examples/careeragent_v0_7_confirmed_update_output.json)：模型提案、用户确认与写入成功；其中复习任务保留当时的 V0.7 历史结构。
 
-受控写入运行截图：
+受控写入脱敏演示截图（离线测试数据与模型响应替身，不调用真实 API，也不修改真实学习数据）：
 
-![CareerAgent 受控写入：参数提案、用户确认与执行完成](docs/images/careeragent-confirmed-update-run.png)
+![CareerAgent V0.8 脱敏受控写入：参数提案、Python 参数预览、用户确认、工具成功与执行完成](docs/images/careeragent-v0-8-sanitized-confirmed-update.png)
 
 ## 数据流
 
