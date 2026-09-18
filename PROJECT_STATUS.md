@@ -1,10 +1,8 @@
 # CareerAgent 项目状态
 
-## CareerAgent V0.9b 确定性匹配已完成并发布
+## 最新版本：V0.9b
 
 更新时间：2026-09-18
-
-当前公开分支：`main`
 
 已完成：
 
@@ -31,15 +29,15 @@
 - V0.9b 保持离线，两个新工具尚未接入 `main.py` 或千问工具 Schema。
 - 匹配状态完全由 Python 决定，模型不能修改或覆盖状态。
 - 本阶段没有调用千问，也没有产生 API 费用。
-- 功能提交为 `8db6be3 feat: add V0.9b deterministic job matching`，已合并并推送至公开 `main`。
+- 功能提交为 `8db6be3 feat: add V0.9b deterministic job matching`。
 
-## CareerAgent V0.9a 已完成并发布
+## V0.9a 历史记录
 
 更新时间：2026-09-18
 
 功能提交：`dc004f2 feat: add V0.9a job and evidence schema`
 
-已实现、完成本地验证并推送至公开 `main`：
+已实现并完成验证：
 
 - 新增 `jobs.json`，保存脱敏岗位和结构化岗位要求。
 - 新增 `candidate_evidence.json`，保存脱敏个人证据及明确的验证状态。
@@ -175,7 +173,7 @@ V0.5 的 `review_tasks` 只保存题号，模型曾错误地把 560 和 283 都�
 
 - V0.8 已完成本地 Git 版本记录。
 - GitHub 公开仓库已创建并完成首次推送。
-- V0.8.1 已从独立功能分支合并到 `main` 并推送公开仓库；功能提交为 `f07940e`。
+- V0.8.1 功能提交为 `f07940e`。
 - 合并前后 49 项离线测试通过，且 `users.json` 与 `study_progress.json` 的测试前后哈希保持一致。
 
 结论：安全检查和首次公开推送均已完成；GitHub 页面能够读取 README、代码、测试和运行截图，未公开 `.env`、`.venv`、`notes` 或本地协作文档。

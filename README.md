@@ -2,6 +2,8 @@
 
 CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读取脱敏的学习进度，让千问模型选择只读工具，并输出带可校验数据来源的 Python、LeetCode 和 Agent 三类结构化建议。
 
+最新版本：`V0.9b`
+
 ## 文档导航
 
 - 当前功能与验证结果：[`PROJECT_STATUS.md`](PROJECT_STATUS.md)

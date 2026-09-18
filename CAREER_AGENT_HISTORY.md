@@ -280,7 +280,7 @@ OK
 - 完整测试使用项目 `.venv` 和模型响应替身，没有调用真实 API。
 - 测试前后 `users.json` 与 `study_progress.json` 的 SHA-256 均保持不变。
 - 代码、测试和文档由 Codex 协助完成，尚不能记录为用户独立实现。
-- V0.8.1 的功能提交为 `f07940e fix: reject blank profile and progress text`；用户验收后已合并到 `main` 并推送公开仓库。
+- V0.8.1 的功能提交为 `f07940e fix: reject blank profile and progress text`。
 
 ## 2026-09-18：V0.9a 岗位与个人证据数据契约
 
@@ -308,7 +308,7 @@ OK
 - V0.9a 全程使用离线数据和模型替身，没有调用千问或产生 API 费用。
 - 数据契约只能验证结构和记录的验证状态，不能自动证明证据描述在现实中真实。
 - 代码、测试、审阅修复和文档由 Codex 协助完成，不能记录为用户独立实现。
-- 本阶段不实现岗位匹配。功能提交为 `dc004f2 feat: add V0.9a job and evidence schema`，随后合并并推送至公开 `main`。
+- 本阶段不实现岗位匹配。功能提交为 `dc004f2 feat: add V0.9a job and evidence schema`。
 
 ## 2026-09-18：V0.9b 本地可解释 JD 匹配
 
@@ -336,4 +336,4 @@ OK
 - Python 语法检查通过；测试前后四份项目 JSON 的 SHA-256 均保持不变。
 - V0.9b 没有调用千问或产生 API 费用，两个新工具也尚未接入 `main.py` 或模型工具 Schema。
 - 代码、测试和文档由 Codex 协助完成，不能记录为用户独立实现或已经独立掌握。
-- 功能提交为 `8db6be3 feat: add V0.9b deterministic job matching`，随后合并并推送至公开 `main`。
+- 功能提交为 `8db6be3 feat: add V0.9b deterministic job matching`。
