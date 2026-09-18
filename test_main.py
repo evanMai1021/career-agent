@@ -1360,6 +1360,89 @@ class MainFlowTests(unittest.TestCase):
         self.assertEqual(result["llm_usage"]["total_tokens"], 150)
         self.assertEqual(result["agent_loop"]["mode"], "llm_tool_calling")
 
+    def test_main_uses_job_analysis_agent_with_fixed_data_files(self):
+        """job操作只把固定文件路径和受控只读工具交给分析Agent。"""
+        users = {"test_user": {"target_role": "AI Agent开发"}}
+        analysis_result = {
+            "ok": True,
+            "username": "test_user",
+            "job_id": "demo_ai_agent_intern",
+            "matches": [],
+            "analysis": {
+                "match_explanations": [],
+                "learning_tasks": [],
+                "interview_questions": [],
+                "study_progress_source": {}
+            },
+            "used_tools": [
+                "get_job_requirements",
+                "get_candidate_evidence",
+                "get_study_progress"
+            ],
+            "model": "qwen3.8-flash",
+            "llm_usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150
+            },
+            "agent_loop": {
+                "mode": "llm_job_analysis",
+                "max_steps": 4,
+                "stop_reason": "completed",
+                "trace": []
+            }
+        }
+        output = StringIO()
+
+        with (
+            patch.object(main_module, "load_users", return_value=users),
+            patch.object(
+                main_module,
+                "run_job_analysis_agent",
+                return_value=analysis_result
+            ) as job_agent,
+            patch.dict("os.environ", {"CAREER_AGENT_MODE": "llm"}),
+            patch(
+                "builtins.input",
+                side_effect=["test_user", "job", "demo_ai_agent_intern"]
+            ),
+            redirect_stdout(output)
+        ):
+            main_module.main()
+
+        job_agent.assert_called_once_with(
+            username="test_user",
+            job_id="demo_ai_agent_intern",
+            jobs_file="jobs.json",
+            evidence_file="candidate_evidence.json",
+            progress_file="study_progress.json",
+            get_job_tool=main_module.get_job_requirements,
+            get_evidence_tool=main_module.get_candidate_evidence,
+            get_progress_tool=main_module.get_study_progress
+        )
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["job_id"], "demo_ai_agent_intern")
+        self.assertEqual(result["agent_loop"]["mode"], "llm_job_analysis")
+
+    def test_main_does_not_run_job_analysis_in_rule_mode(self):
+        """无费用规则模式不会偷偷调用岗位分析模型。"""
+        users = {"test_user": {"target_role": "AI Agent开发"}}
+        output = StringIO()
+
+        with (
+            patch.object(main_module, "load_users", return_value=users),
+            patch.object(main_module, "run_job_analysis_agent") as job_agent,
+            patch.dict("os.environ", {"CAREER_AGENT_MODE": "rule"}),
+            patch("builtins.input", side_effect=["test_user", "job"]),
+            redirect_stdout(output)
+        ):
+            main_module.main()
+
+        job_agent.assert_not_called()
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["used_tools"], [])
+        self.assertEqual(result["error"], "岗位分析目前只支持llm模式。")
+
     def test_main_cancels_update_without_exact_confirmation(self):
         """主流程展示提案后，空确认会取消且不执行写入。"""
         users = {"test_user": {"target_role": "AI Agent开发"}}

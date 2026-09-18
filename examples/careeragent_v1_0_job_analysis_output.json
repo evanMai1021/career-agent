@@ -1,0 +1,116 @@
+{
+  "evidence_type": "offline_model_stub",
+  "note": "本文件用于稳定展示V1.0输出结构，不是千问原始响应。真实千问只读验收结果记录在PROJECT_STATUS.md。",
+  "result": {
+    "job_id": "demo_ai_agent_intern",
+    "username": "test_user",
+    "matches": [
+      {
+        "requirement_id": "req_python",
+        "skill_id": "python",
+        "description": "能够使用Python完成数据处理和自动化测试",
+        "category": "required",
+        "priority": 1,
+        "status": "matched",
+        "related_evidence_ids": [
+          "ev_python_tests"
+        ]
+      },
+      {
+        "requirement_id": "req_agent_tool_calling",
+        "skill_id": "agent_tool_calling",
+        "description": "理解并实现受控的模型工具调用流程",
+        "category": "required",
+        "priority": 1,
+        "status": "matched",
+        "related_evidence_ids": [
+          "ev_agent_tool_calling"
+        ]
+      },
+      {
+        "requirement_id": "req_fastapi",
+        "skill_id": "fastapi",
+        "description": "了解Python Web API开发",
+        "category": "preferred",
+        "priority": 2,
+        "status": "unverified",
+        "related_evidence_ids": [
+          "ev_fastapi_plan"
+        ]
+      }
+    ],
+    "analysis": {
+      "match_explanations": [
+        {
+          "requirement_id": "req_python",
+          "status": "matched",
+          "related_evidence_ids": [
+            "ev_python_tests"
+          ],
+          "summary": "存在已验证的项目级Python测试证据。"
+        },
+        {
+          "requirement_id": "req_agent_tool_calling",
+          "status": "matched",
+          "related_evidence_ids": [
+            "ev_agent_tool_calling"
+          ],
+          "summary": "存在已验证的项目级受控工具调用证据。"
+        },
+        {
+          "requirement_id": "req_fastapi",
+          "status": "unverified",
+          "related_evidence_ids": [
+            "ev_fastapi_plan"
+          ],
+          "summary": "目前只有尚未验证的学习记录。"
+        }
+      ],
+      "learning_tasks": [
+        {
+          "requirement_id": "req_fastapi",
+          "task": "完成一个带输入校验和单元测试的本地FastAPI最小接口。"
+        }
+      ],
+      "interview_questions": [
+        {
+          "requirement_id": "req_python",
+          "question": "如何证明自动化测试没有修改真实项目数据？"
+        },
+        {
+          "requirement_id": "req_agent_tool_calling",
+          "question": "Agent工具调用中如何限制模型的权限和数据范围？"
+        },
+        {
+          "requirement_id": "req_fastapi",
+          "question": "如何设计一个只读Web API的输入校验？"
+        }
+      ],
+      "study_progress_source": {
+        "python_progress": "在CareerAgent中学习函数与测试",
+        "leetcode_topic": "滑动窗口",
+        "agent_progress": "CareerAgent V1.0受控JD分析已通过106项离线测试和一次真实千问只读验收。",
+        "review_tasks": [
+          {
+            "problem_id": 560,
+            "title": "和为K的子数组",
+            "topics": [
+              "前缀和",
+              "哈希表"
+            ],
+            "status": "待复习"
+          },
+          {
+            "problem_id": 283,
+            "title": "移动零",
+            "topics": [
+              "双指针",
+              "数组"
+            ],
+            "status": "待复习"
+          }
+        ]
+      }
+    }
+  }
+}

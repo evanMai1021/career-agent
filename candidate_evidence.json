@@ -6,17 +6,17 @@
         {
           "evidence_id": "ev_python_tests",
           "skill_id": "python",
-          "description": "CareerAgent V0.8.1共有49项离线测试通过",
+          "description": "CareerAgent V1.0共有106项离线测试通过",
           "level": "project",
-          "source": "CareerAgent V0.8.1测试结果",
+          "source": "CareerAgent V1.0测试结果",
           "verified": true
         },
         {
           "evidence_id": "ev_agent_tool_calling",
           "skill_id": "agent_tool_calling",
-          "description": "CareerAgent实现受控只读与确认后写入工具流程",
+          "description": "CareerAgent V1.0实现受控JD分析和确认后写入工具流程",
           "level": "project",
-          "source": "CareerAgent V0.8.1公开仓库",
+          "source": "CareerAgent V1.0代码、测试与真实只读验收",
           "verified": true
         },
         {

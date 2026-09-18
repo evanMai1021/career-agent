@@ -4,6 +4,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from job_analysis_agent import run_job_analysis_agent
+from job_matching import get_candidate_evidence, get_job_requirements
 from qwen_agent import run_qwen_agent_loop, run_qwen_update_proposal
 
 
@@ -468,19 +470,49 @@ def main():
         # 基础资料只验证目标岗位等用户信息，不再直接提供学习进度。
         validate_user_profile(user_profile)
 
-        # advice 是只读建议流程；update 当前只生成提案，不会修改文件。
+        # advice 是学习建议，job 是岗位分析；update 当前只生成写入提案。
         action = input(
-            "请选择操作（advice/update，直接回车默认为advice）："
+            "请选择操作（advice/job/update，直接回车默认为advice）："
         ).strip().lower()
-        action_aliases = {"": "advice", "建议": "advice", "更新": "update"}
+        action_aliases = {
+            "": "advice",
+            "建议": "advice",
+            "岗位分析": "job",
+            "更新": "update"
+        }
         action = action_aliases.get(action, action)
 
-        if action not in {"advice", "update"}:
+        if action not in {"advice", "job", "update"}:
             result = {
                 "username": username,
                 "target_role": user_profile["target_role"],
-                "error": "操作只能是advice或update。"
+                "error": "操作只能是advice、job或update。"
             }
+            print(json.dumps(result, ensure_ascii=False, indent=4))
+            return
+
+        if action == "job":
+            if agent_mode != "llm":
+                result = {
+                    "username": username,
+                    "target_role": user_profile["target_role"],
+                    "used_tools": [],
+                    "error": "岗位分析目前只支持llm模式。"
+                }
+                print(json.dumps(result, ensure_ascii=False, indent=4))
+                return
+
+            job_id = input("请输入岗位ID：").strip()
+            result = run_job_analysis_agent(
+                username=username,
+                job_id=job_id,
+                jobs_file="jobs.json",
+                evidence_file="candidate_evidence.json",
+                progress_file="study_progress.json",
+                get_job_tool=get_job_requirements,
+                get_evidence_tool=get_candidate_evidence,
+                get_progress_tool=get_study_progress
+            )
             print(json.dumps(result, ensure_ascii=False, indent=4))
             return
 

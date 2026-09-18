@@ -2,7 +2,7 @@
 
 CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读取脱敏的学习进度，让千问模型选择只读工具，并输出带可校验数据来源的 Python、LeetCode 和 Agent 三类结构化建议。
 
-最新版本：`V0.9b`
+最新版本：`V1.0`
 
 ## 文档导航
 
@@ -26,7 +26,8 @@ CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读
 - 模型建议必须携带 `sources`，Python 会与工具返回的数据逐项核对。
 - V0.9a 新增脱敏岗位与候选人证据数据契约，校验精确字段、非空值、枚举、优先级、布尔验证状态和重复 ID。
 - V0.9b 新增岗位要求和候选人证据只读工具，并由 Python 按已验证证据层级计算 `matched`、`partial`、`unverified`、`missing`。
-- V0.9b 仍是离线能力，尚未接入 `main.py` 或千问工具 Schema；模型不能决定或覆盖匹配状态。
+- V1.0 将岗位、候选人证据和学习进度三个只读工具接入 JD 分析 Agent，并由 Python 核对模型返回的状态、证据 ID 和来源。
+- 岗位描述与证据描述始终作为待分析数据处理，其中的文字不能扩大工具权限或变成系统指令。
 
 普通建议循环只向模型开放 `get_study_progress`。写入提案必须由用户明确选择 `update` 才会生成，确认前不会修改文件。
 
@@ -97,8 +98,17 @@ test_user
 
 ```text
 advice  # 生成建议；直接回车也是此模式
+job     # 分析脱敏岗位与候选人证据
 update  # 根据明确要求生成更新提案
 ```
+
+选择 `job` 后输入脱敏示例岗位 ID：
+
+```text
+demo_ai_agent_intern
+```
+
+岗位分析会产生千问 API Token 用量，但只允许读取固定的项目数据文件，不会执行写入。
 
 选择 `update` 后，程序会先显示完整提案。核对用户名、字段和新值后：
 
@@ -127,6 +137,10 @@ V0.9a 新增 17 项数据契约测试，完整套件现为 66 项。测试覆盖
 
 V0.9b 新增 24 项确定性匹配和只读工具测试，完整套件现为 90 项。测试覆盖四种匹配状态、多证据优先级、非法输入整体拒绝、空查询、目标不存在、文件缺失、损坏 JSON、非法根结构、读取前后文件不变，以及保存的脱敏示例与实际结果一致。完整测试前后四份项目 JSON 的 SHA-256 保持不变。
 
+V1.0 新增 16 项 JD 分析 Agent、脱敏示例与主流程接入测试，完整套件现为 106 项。测试覆盖三个只读工具、固定文件路径、跨用户与跨岗位拒绝、未授权工具拒绝、Python 权威匹配结果、伪造证据 ID、模型输出结构、脱敏示例一致性，以及规则模式不调用岗位分析模型。完整测试和语法检查通过，测试前后四份项目 JSON 保持不变。
+
+V1.0 已完成一次真实只读验收：千问依次调用三个只读工具，Python 接受最终结构化输出并以 `completed` 停止；匹配结果为两个 `matched` 和一个 `unverified`，共使用 3652 Tokens，没有执行写入工具。第一次验收因提示词与校验器的数量、顺序契约不一致而被安全拒绝，修复后再次通过。
+
 V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`，生成的三类建议均携带可核对的 `sources`，并通过 Python 本地来源校验。该次运行没有执行写入工具。
 
 脱敏运行证据：
@@ -134,6 +148,7 @@ V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`
 - [`examples/careeragent_v0_6_review_topics_output.json`](examples/careeragent_v0_6_review_topics_output.json)：只读工具与结构化建议。
 - [`examples/careeragent_v0_7_confirmed_update_output.json`](examples/careeragent_v0_7_confirmed_update_output.json)：模型提案、用户确认与写入成功；其中复习任务保留当时的 V0.7 历史结构。
 - [`examples/careeragent_v0_9b_job_match_output.json`](examples/careeragent_v0_9b_job_match_output.json)：两个岗位/证据只读工具与 Python 确定性匹配结果；不调用真实模型。
+- [`examples/careeragent_v1_0_job_analysis_output.json`](examples/careeragent_v1_0_job_analysis_output.json)：三个只读工具、Python 权威匹配和结构化岗位分析；明确标注为离线模型替身示例。
 
 受控写入脱敏演示截图（离线测试数据与模型响应替身，不调用真实 API，也不修改真实学习数据）：
 
@@ -144,8 +159,9 @@ V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`
 ```text
 启动 main.py
 → 加载并验证用户
-→ 选择 advice 或 update
+→ 选择 advice、job 或 update
 ├─ advice：千问调用只读工具 → 生成建议和sources → Python核对来源
+├─ job：千问调用三个只读工具 → Python计算匹配 → 模型解释 → Python核对状态和来源
 └─ update：千问生成参数提案 → Python验证 → 用户确认 → 执行或取消
 ```
 
