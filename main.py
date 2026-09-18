@@ -57,6 +57,9 @@ def validate_user_profile(user_profile):
         if not isinstance(user_profile[field], str):
             print(f"用户资料字段必须是字符串：{field}")
             raise SystemExit
+        if not user_profile[field].strip():
+            print(f"用户资料字段不能为空：{field}")
+            raise SystemExit
 
 
 def generate_advice(study_progress):
@@ -199,8 +202,11 @@ def validate_study_progress_update(field, new_value):
     if field not in STUDY_PROGRESS_FIELDS:
         return f"不允许更新学习进度字段：{field}"
 
-    if field in STUDY_TEXT_FIELDS and not isinstance(new_value, str):
-        return f"学习进度字段必须是字符串：{field}"
+    if field in STUDY_TEXT_FIELDS:
+        if not isinstance(new_value, str):
+            return f"学习进度字段必须是字符串：{field}"
+        if not new_value.strip():
+            return f"学习进度字段不能为空：{field}"
 
     if field == "review_tasks":
         return validate_review_tasks(new_value)
@@ -237,6 +243,8 @@ def get_study_progress(username, progress_file):
             return {"ok": False, "error": f"用户学习进度缺少必要字段：{field}"}
         if not isinstance(user_progress[field], str):
             return {"ok": False, "error": f"用户学习进度字段必须是字符串：{field}"}
+        if not user_progress[field].strip():
+            return {"ok": False, "error": f"用户学习进度字段不能为空：{field}"}
 
     if "review_tasks" not in user_progress:
         return {"ok": False, "error": "用户学习进度缺少必要字段：review_tasks"}

@@ -231,9 +231,21 @@ class ValidateUserProfileTests(unittest.TestCase):
             "用户资料字段必须是字符串：target_role"
         )
 
+    def test_target_role_must_not_be_blank(self):
+        """target_role 只有空白字符时，资料不能进入建议生成过程。"""
+        output = StringIO()
+
+        with redirect_stdout(output), self.assertRaises(SystemExit):
+            validate_user_profile({"target_role": "   "})
+
+        self.assertEqual(
+            output.getvalue().strip(),
+            "用户资料字段不能为空：target_role"
+        )
+
 
 class GetStudyProgressTests(unittest.TestCase):
-    """直接验证学习进度工具的成功路径和四种错误路径。"""
+    """直接验证学习进度工具的成功路径和数据错误路径。"""
 
     def test_returns_progress_for_existing_user(self):
         """正常用户名会返回结构化、可序列化的学习进度。"""
@@ -270,6 +282,29 @@ class GetStudyProgressTests(unittest.TestCase):
         )
         # json.dumps() 成功说明结果能交给后续模型或其他程序处理。
         self.assertIsInstance(json.dumps(result, ensure_ascii=False), str)
+
+    def test_rejects_blank_text_progress(self):
+        """已有文本进度为空白时，不能交给后续建议流程。"""
+        with TemporaryDirectory() as temp_dir:
+            progress_file = Path(temp_dir) / "progress.json"
+            progress_file.write_text(
+                json.dumps({
+                    "test_user": {
+                        "python_progress": "   ",
+                        "leetcode_topic": "滑动窗口",
+                        "agent_progress": "CareerAgent V0.8完成",
+                        "review_tasks": SAMPLE_REVIEW_TASKS
+                    }
+                }, ensure_ascii=False),
+                encoding="utf-8"
+            )
+
+            result = get_study_progress("test_user", progress_file)
+
+        self.assertEqual(
+            result,
+            {"ok": False, "error": "用户学习进度字段不能为空：python_progress"}
+        )
 
     def test_returns_error_for_unknown_user(self):
         """不存在的用户名不会触发 KeyError。"""
@@ -596,6 +631,22 @@ class UpdateStudyProgressTests(unittest.TestCase):
             result,
             {"ok": False, "error": "学习进度字段必须是字符串：python_progress"}
         )
+
+    def test_rejects_blank_text_without_changing_file(self):
+        """文本进度为空白时拒绝写入，原文件保持不变。"""
+        result = update_study_progress(
+            "test_user",
+            "agent_progress",
+            "   ",
+            self.progress_file
+        )
+
+        saved_data = json.loads(self.progress_file.read_text(encoding="utf-8"))
+        self.assertEqual(
+            result,
+            {"ok": False, "error": "学习进度字段不能为空：agent_progress"}
+        )
+        self.assertEqual(saved_data, self.original_data)
 
     def test_returns_error_for_unknown_user(self):
         """不存在的用户不会被写入文件。"""
