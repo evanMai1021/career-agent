@@ -1,5 +1,26 @@
 # CareerAgent 项目状态
 
+## CareerAgent V0.9a 已验证，待 Git 提交
+
+更新时间：2026-09-18
+
+当前开发分支：`codex/v0.9a-job-evidence-schema`
+
+已实现并完成本地验证，但尚未提交、合并或推送：
+
+- 新增 `jobs.json`，保存脱敏岗位和结构化岗位要求。
+- 新增 `candidate_evidence.json`，保存脱敏个人证据及明确的验证状态。
+- 新增 `job_data.py`，分别验证岗位、岗位要求、候选人证据和两份 JSON 的根结构。
+- 岗位类别只允许 `required` 或 `preferred`，优先级只允许 1、2、3。
+- 个人证据层级只允许 `learning`、`practice`、`project`、`production`，并强制记录布尔值 `verified`。
+- 允许候选人证据列表为空，避免把“没有证据”伪装成数据错误或已掌握能力。
+- 非字符串 `category` 和 `level` 会被稳定拒绝，不再因集合查询抛出 `TypeError`。
+- 17 项 V0.9a 数据契约测试通过；完整测试为 66 项，全部通过。
+- 测试前后 `users.json`、`study_progress.json`、`jobs.json` 和 `candidate_evidence.json` 的 SHA-256 均保持不变。
+- 本阶段没有实现岗位匹配，没有调用千问，也没有产生 API 费用。
+
+边界：Schema 只能要求每条证据明确记录来源、层级和验证状态，不能单靠字段自动证明内容真实。V0.9b 的匹配逻辑必须把未验证证据和学习计划与已验证能力分开处理。
+
 ## CareerAgent V0.8.1
 
 更新时间：2026-09-18
@@ -101,8 +122,8 @@ V0.5 的 `review_tasks` 只保存题号，模型曾错误地把 560 和 283 都�
 
 ## 下一步顺序
 
-1. V0.8.1 已完成用户验收、合并和公开推送，49 项离线测试通过且测试未修改项目 JSON 数据。
-2. 后续计划统一记录在 `ROADMAP.md`；下一步先完成 V0.9a 的脱敏 `jobs.json`、`candidate_evidence.json` 和数据校验测试，再在 V0.9b 实现本地匹配，不直接扩展到 RAG 或多 Agent。
+1. V0.9a 数据结构、验证函数、异常类型回归测试和完整离线测试已经通过，等待用户决定是否提交 Git。
+2. V0.9a 提交后再创建 V0.9b 功能分支实现本地匹配；合并和推送仍需分别获得用户授权。
 
 ## 边界说明
 

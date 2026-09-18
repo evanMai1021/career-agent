@@ -1,0 +1,33 @@
+{
+  "candidates": [
+    {
+      "username": "test_user",
+      "evidence": [
+        {
+          "evidence_id": "ev_python_tests",
+          "skill_id": "python",
+          "description": "CareerAgent V0.8.1共有49项离线测试通过",
+          "level": "project",
+          "source": "CareerAgent V0.8.1测试结果",
+          "verified": true
+        },
+        {
+          "evidence_id": "ev_agent_tool_calling",
+          "skill_id": "agent_tool_calling",
+          "description": "CareerAgent实现受控只读与确认后写入工具流程",
+          "level": "project",
+          "source": "CareerAgent V0.8.1公开仓库",
+          "verified": true
+        },
+        {
+          "evidence_id": "ev_fastapi_plan",
+          "skill_id": "fastapi",
+          "description": "FastAPI仅列入后续学习和开发计划",
+          "level": "learning",
+          "source": "CareerAgent ROADMAP",
+          "verified": false
+        }
+      ]
+    }
+  ]
+}

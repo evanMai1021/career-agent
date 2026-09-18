@@ -282,10 +282,38 @@ OK
 - 代码、测试和文档由 Codex 协助完成，尚不能记录为用户独立实现。
 - V0.8.1 的功能提交为 `f07940e fix: reject blank profile and progress text`；用户验收后已合并到 `main` 并推送公开仓库。
 
+## 2026-09-18：V0.9a 岗位与个人证据数据契约
+
+主要成果：
+
+- 新增脱敏 `jobs.json` 与 `candidate_evidence.json`。
+- 新增 `job_data.py`，校验岗位、岗位要求、候选人证据和两份 JSON 根结构。
+- 岗位要求类别限制为 `required` 或 `preferred`，优先级限制为整数 1、2、3，并拒绝布尔值。
+- 证据层级限制为 `learning`、`practice`、`project` 或 `production`，`verified` 必须是布尔值。
+- 校验重复岗位 ID、要求 ID、用户名和证据 ID，同时允许候选人的证据列表为空。
+- 代码审阅发现非字符串 `category` 和 `level` 会触发 `TypeError`；新增两项回归测试后，改为先验证字符串类型再检查枚举值。
+
+验证证据：
+
+```text
+Ran 17 tests in 0.004s
+OK
+
+Ran 66 tests in 0.062s
+OK
+```
+
+- `job_data.py`、`test_job_data.py`、`main.py`、`test_main.py` 和 `qwen_agent.py` 语法检查通过。
+- 完整测试前后四份项目 JSON 的 SHA-256 均保持不变。
+- V0.9a 全程使用离线数据和模型替身，没有调用千问或产生 API 费用。
+- 数据契约只能验证结构和记录的验证状态，不能自动证明证据描述在现实中真实。
+- 代码、测试、审阅修复和文档由 Codex 协助完成，不能记录为用户独立实现。
+- 本阶段不实现岗位匹配；提交、合并和推送仍分别等待用户授权。
+
 ## 当前版本之后的候选工作
 
-以下内容没有包含在上述已完成版本中，应以当前 `PROJECT_STATUS.md` 为准决定是否实施：
+以下内容没有包含在上述已验证版本中，应以当前 `PROJECT_STATUS.md` 为准决定是否实施：
 
-- 按照 `ROADMAP.md` 先推进 V0.9a：设计脱敏岗位与个人证据 Schema，并使用离线测试验证数据边界；匹配逻辑留到 V0.9b。
+- 按照 `ROADMAP.md` 推进 V0.9b：先定义确定性匹配矩阵，再实现岗位要求、候选人证据只读工具和本地匹配函数。
 
 第一版范围仍不包含 RAG、多 Agent、网页前端、自动岗位搜索、自动投递和云部署。
