@@ -24,7 +24,8 @@ CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读
 - 本地可信目录校验题号、题名与专题映射，错误映射不会进入模型上下文。
 - 模型建议必须携带 `sources`，Python 会与工具返回的数据逐项核对。
 - V0.9a 新增脱敏岗位与候选人证据数据契约，校验精确字段、非空值、枚举、优先级、布尔验证状态和重复 ID。
-- 当前只验证岗位与证据数据，不计算岗位匹配；确定性匹配留到 V0.9b。
+- V0.9b 新增岗位要求和候选人证据只读工具，并由 Python 按已验证证据层级计算 `matched`、`partial`、`unverified`、`missing`。
+- V0.9b 仍是离线能力，尚未接入 `main.py` 或千问工具 Schema；模型不能决定或覆盖匹配状态。
 
 普通建议循环只向模型开放 `get_study_progress`。写入提案必须由用户明确选择 `update` 才会生成，确认前不会修改文件。
 
@@ -123,12 +124,15 @@ V0.8.1 基线共有 49 项离线测试；新增用例覆盖空白目标岗位、
 
 V0.9a 新增 17 项数据契约测试，完整套件现为 66 项。测试覆盖脱敏项目 JSON、精确字段、空白值、非法枚举、错误枚举类型、重复 ID、布尔优先级、非法验证状态和空证据列表。完整测试前后 `users.json`、`study_progress.json`、`jobs.json` 与 `candidate_evidence.json` 的 SHA-256 均保持不变；这些测试不调用真实模型，也不产生 API 费用。
 
+V0.9b 新增 24 项确定性匹配和只读工具测试，完整套件现为 90 项。测试覆盖四种匹配状态、多证据优先级、非法输入整体拒绝、空查询、目标不存在、文件缺失、损坏 JSON、非法根结构、读取前后文件不变，以及保存的脱敏示例与实际结果一致。完整测试前后四份项目 JSON 的 SHA-256 保持不变。
+
 V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`，生成的三类建议均携带可核对的 `sources`，并通过 Python 本地来源校验。该次运行没有执行写入工具。
 
 脱敏运行证据：
 
 - [`examples/careeragent_v0_6_review_topics_output.json`](examples/careeragent_v0_6_review_topics_output.json)：只读工具与结构化建议。
 - [`examples/careeragent_v0_7_confirmed_update_output.json`](examples/careeragent_v0_7_confirmed_update_output.json)：模型提案、用户确认与写入成功；其中复习任务保留当时的 V0.7 历史结构。
+- [`examples/careeragent_v0_9b_job_match_output.json`](examples/careeragent_v0_9b_job_match_output.json)：两个岗位/证据只读工具与 Python 确定性匹配结果；不调用真实模型。
 
 受控写入脱敏演示截图（离线测试数据与模型响应替身，不调用真实 API，也不修改真实学习数据）：
 

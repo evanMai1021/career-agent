@@ -1,0 +1,39 @@
+{
+  "job_id": "demo_ai_agent_intern",
+  "username": "test_user",
+  "matches": [
+    {
+      "requirement_id": "req_python",
+      "skill_id": "python",
+      "description": "能够使用Python完成数据处理和自动化测试",
+      "category": "required",
+      "priority": 1,
+      "status": "matched",
+      "related_evidence_ids": [
+        "ev_python_tests"
+      ]
+    },
+    {
+      "requirement_id": "req_agent_tool_calling",
+      "skill_id": "agent_tool_calling",
+      "description": "理解并实现受控的模型工具调用流程",
+      "category": "required",
+      "priority": 1,
+      "status": "matched",
+      "related_evidence_ids": [
+        "ev_agent_tool_calling"
+      ]
+    },
+    {
+      "requirement_id": "req_fastapi",
+      "skill_id": "fastapi",
+      "description": "了解Python Web API开发",
+      "category": "preferred",
+      "priority": 2,
+      "status": "unverified",
+      "related_evidence_ids": [
+        "ev_fastapi_plan"
+      ]
+    }
+  ]
+}

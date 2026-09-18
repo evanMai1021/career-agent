@@ -1,12 +1,47 @@
 # CareerAgent 项目状态
 
-## CareerAgent V0.9a 已验证，待 Git 提交
+## CareerAgent V0.9b 确定性匹配已验证，待 Git 提交
 
 更新时间：2026-09-18
 
-当前开发分支：`codex/v0.9a-job-evidence-schema`
+当前开发分支：`codex/v0.9b-deterministic-job-matching`
 
-已实现并完成本地验证，但尚未提交、合并或推送：
+已完成：
+
+- 在 `ROADMAP.md` 中定义 `matched`、`partial`、`unverified`、`missing` 的确定性判定矩阵。
+- 只比较完全相同的 `skill_id`，不使用描述文本进行模糊判断。
+- 已验证的 `project` 或 `production` 证据进入 `matched`。
+- 已验证的 `learning` 或 `practice` 证据进入 `partial`。
+- 只有未验证相关证据时进入 `unverified`；没有相关证据时进入 `missing`。
+- `verified=false` 的高层级描述不能覆盖已验证的低层级证据。
+- 新增 `job_matching.py` 和 11 项 V0.9b 矩阵测试。
+- `match_job_requirements` 会先复用 V0.9a 校验，非法岗位或候选人证据会整体拒绝。
+- 匹配结果保留岗位要求字段、唯一状态和按输入顺序排列的 `related_evidence_ids`。
+- `get_job_requirements` 只读加载并返回一个已验证岗位的结构化要求。
+- `get_candidate_evidence` 只读加载并返回一个已验证候选人的结构化证据。
+- 空查询、文件缺失、JSON 损坏、根结构非法和目标不存在都会返回明确错误。
+- 24 项 V0.9b 目标测试全部通过；完整离线测试为 90 项，全部通过。
+- Python 语法检查通过，测试前后四份项目 JSON 的 SHA-256 均保持不变。
+- 两个只读工具和匹配函数已使用项目脱敏数据实际运行，结果为两个 `matched` 和一个 `unverified`。
+- 脱敏结果保存在 `examples/careeragent_v0_9b_job_match_output.json`。
+- 实现和测试由 Codex 协助完成，不能记录为用户独立实现或已经独立掌握。
+
+当前边界：
+
+- V0.9b 保持离线，两个新工具尚未接入 `main.py` 或千问工具 Schema。
+- 匹配状态完全由 Python 决定，模型不能修改或覆盖状态。
+- 本阶段没有调用千问，也没有产生 API 费用。
+- V0.9b 尚未提交、合并或推送。
+
+下一步：完成最终差异与安全检查后，询问用户是否提交 V0.9b；V1.0 才考虑把只读工具接入 Agent 流程。
+
+## CareerAgent V0.9a 已验证并合并到本地 main
+
+更新时间：2026-09-18
+
+功能提交：`dc004f2 feat: add V0.9a job and evidence schema`
+
+已实现、完成本地验证并快进合并到本地 `main`，但尚未推送：
 
 - 新增 `jobs.json`，保存脱敏岗位和结构化岗位要求。
 - 新增 `candidate_evidence.json`，保存脱敏个人证据及明确的验证状态。
@@ -122,8 +157,8 @@ V0.5 的 `review_tasks` 只保存题号，模型曾错误地把 560 和 283 都�
 
 ## 下一步顺序
 
-1. V0.9a 数据结构、验证函数、异常类型回归测试和完整离线测试已经通过，等待用户决定是否提交 Git。
-2. V0.9a 提交后再创建 V0.9b 功能分支实现本地匹配；合并和推送仍需分别获得用户授权。
+1. V0.9b 已完成确定性匹配函数、两个受控只读工具、脱敏输出和本地验证，下一步等待用户决定是否提交 Git。
+2. V0.9b 合并与远程推送仍需用户分别明确授权；V1.0 的真实模型接入也需重新确认费用和工具边界。
 
 ## 边界说明
 
