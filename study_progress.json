@@ -2,7 +2,7 @@
   "test_user": {
     "python_progress": "在CareerAgent中学习函数与测试",
     "leetcode_topic": "滑动窗口",
-    "agent_progress": "已完成Agent基础概念与架构学习，正在实践工具调用（Function Calling）与Prompt编排，下一步计划完成一个多Agent协作项目并整理复盘。",
+    "agent_progress": "CareerAgent V0.8.1非空白文本校验已通过49项离线测试并完成合并与公开推送；下一步计划完成V0.9a脱敏岗位和个人证据Schema及校验测试。",
     "review_tasks": [
       {
         "problem_id": 560,

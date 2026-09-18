@@ -280,12 +280,12 @@ OK
 - 完整测试使用项目 `.venv` 和模型响应替身，没有调用真实 API。
 - 测试前后 `users.json` 与 `study_progress.json` 的 SHA-256 均保持不变。
 - 代码、测试和文档由 Codex 协助完成，尚不能记录为用户独立实现。
-- 当前修改位于 `codex/v0.8.1-nonempty-text-validation` 分支，尚未提交或推送。
+- V0.8.1 的功能提交为 `f07940e fix: reject blank profile and progress text`；用户验收后已合并到 `main` 并推送公开仓库。
 
 ## 当前版本之后的候选工作
 
 以下内容没有包含在上述已完成版本中，应以当前 `PROJECT_STATUS.md` 为准决定是否实施：
 
-- 先复查并决定是否提交 V0.8.1；随后可设计结构化岗位目标读取的最小 Schema 和可信数据来源。
+- 按照 `ROADMAP.md` 先推进 V0.9a：设计脱敏岗位与个人证据 Schema，并使用离线测试验证数据边界；匹配逻辑留到 V0.9b。
 
 第一版范围仍不包含 RAG、多 Agent、网页前端、自动岗位搜索、自动投递和云部署。
