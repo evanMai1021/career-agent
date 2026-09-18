@@ -189,9 +189,11 @@ def _result_error(
     max_steps,
     used_tools,
     usage,
-    trace
+    trace,
+    matches=None,
+    fallback=None
 ):
-    return {
+    result = {
         "ok": False,
         "error": message,
         "used_tools": used_tools,
@@ -204,6 +206,11 @@ def _result_error(
             "trace": trace
         }
     }
+    if matches is not None:
+        result["matches"] = matches
+    if fallback is not None:
+        result["fallback"] = fallback
+    return result
 
 
 def _analysis_validation_error(analysis, matches, study_progress):
@@ -287,6 +294,78 @@ def _parse_tool_arguments(tool_call, expected_field):
     return value.strip()
 
 
+def _build_local_match_fallback(
+    username,
+    job_id,
+    tool_specs,
+    tool_results,
+    used_tools,
+    trace
+):
+    """模型不可用时直接执行必要只读工具，保留 Python 本地匹配结果。"""
+    required_tools = ("get_job_requirements", "get_candidate_evidence")
+    fallback_results = {}
+    for tool_name in required_tools:
+        spec = tool_specs[tool_name]
+        tool_result = tool_results.get(tool_name)
+        if tool_result is None:
+            tool_result = spec["callable"](spec["expected"], spec["file"])
+            if tool_name not in used_tools:
+                used_tools.append(tool_name)
+            trace.append({
+                "step": len(trace) + 1,
+                "action": tool_name,
+                "status": (
+                    "success"
+                    if isinstance(tool_result, dict) and tool_result.get("ok")
+                    else "error"
+                ),
+                "source": "python_fallback"
+            })
+
+        if (
+            not isinstance(tool_result, dict)
+            or not tool_result.get("ok")
+            or tool_result.get(spec["field"]) != spec["expected"]
+        ):
+            trace.append({
+                "step": len(trace) + 1,
+                "action": "python_local_match_fallback",
+                "status": "unavailable"
+            })
+            return None
+        fallback_results[tool_name] = tool_result
+
+    try:
+        job_result = fallback_results["get_job_requirements"]
+        evidence_result = fallback_results["get_candidate_evidence"]
+        matches = match_job_requirements(
+            {
+                "job_id": job_id,
+                "title": job_result["title"],
+                "requirements": job_result["requirements"]
+            },
+            {
+                "username": username,
+                "evidence": evidence_result["evidence"]
+            }
+        )
+    except (KeyError, TypeError, ValueError):
+        trace.append({
+            "step": len(trace) + 1,
+            "action": "python_local_match_fallback",
+            "status": "unavailable"
+        })
+        return None
+
+    trace.append({
+        "step": len(trace) + 1,
+        "action": "python_local_match_fallback",
+        "status": "success"
+    })
+    return matches
+
+
 def run_job_analysis_agent(
     username,
     job_id,
@@ -320,20 +399,6 @@ def run_job_analysis_agent(
     tool_results = {}
     matches = None
     match_context_added = False
-
-    if client is None:
-        try:
-            client = create_qwen_client()
-        except RuntimeError as error:
-            return _result_error(
-                f"千问模型调用失败：{type(error).__name__}",
-                "model_error",
-                model,
-                max_steps,
-                used_tools,
-                usage,
-                trace
-            )
 
     messages = [
         {
@@ -377,6 +442,33 @@ def run_job_analysis_agent(
             "callable": get_progress_tool
         }
     }
+
+    if client is None:
+        try:
+            client = create_qwen_client()
+        except RuntimeError as error:
+            fallback_matches = _build_local_match_fallback(
+                username,
+                job_id,
+                tool_specs,
+                tool_results,
+                used_tools,
+                trace
+            )
+            return _result_error(
+                f"千问模型调用失败：{type(error).__name__}",
+                "model_error",
+                model,
+                max_steps,
+                used_tools,
+                usage,
+                trace,
+                matches=fallback_matches,
+                fallback={
+                    "mode": "python_deterministic_match",
+                    "available": fallback_matches is not None
+                }
+            )
 
     for step in range(1, max_steps + 1):
         all_tools_used = len(tool_results) == len(tool_specs)
@@ -445,6 +537,14 @@ def run_job_analysis_agent(
                 "status": "error"
             })
             error_code = getattr(error, "code", None) or type(error).__name__
+            fallback_matches = _build_local_match_fallback(
+                username,
+                job_id,
+                tool_specs,
+                tool_results,
+                used_tools,
+                trace
+            )
             return _result_error(
                 f"千问模型调用失败：{error_code}",
                 "model_error",
@@ -452,7 +552,12 @@ def run_job_analysis_agent(
                 max_steps,
                 used_tools,
                 usage,
-                trace
+                trace,
+                matches=fallback_matches,
+                fallback={
+                    "mode": "python_deterministic_match",
+                    "available": fallback_matches is not None
+                }
             )
 
         _add_usage(usage, response)

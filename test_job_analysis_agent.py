@@ -513,6 +513,30 @@ class JobAnalysisAgentTests(unittest.TestCase):
         self.assertEqual(result["error"], "岗位数据损坏。")
         self.assertEqual(result["agent_loop"]["stop_reason"], "tool_error")
 
+    def test_model_error_keeps_local_matches_without_retrying_model(self):
+        client = MagicMock()
+        client.chat.completions.create.side_effect = ConnectionError("offline")
+
+        result = self.run_agent(client)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["agent_loop"]["stop_reason"], "model_error")
+        self.assertEqual(result["matches"], EXPECTED_MATCHES)
+        self.assertEqual(result["fallback"], {
+            "mode": "python_deterministic_match",
+            "available": True
+        })
+        self.assertEqual(result["used_tools"], [
+            "get_job_requirements",
+            "get_candidate_evidence"
+        ])
+        self.progress_tool.assert_not_called()
+        self.assertEqual(client.chat.completions.create.call_count, 1)
+        self.assertEqual(
+            [item["step"] for item in result["agent_loop"]["trace"]],
+            [1, 2, 3, 4]
+        )
+
     def test_rejects_invalid_max_steps_before_model_call(self):
         client = MagicMock()
 
