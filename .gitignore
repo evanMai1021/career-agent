@@ -13,6 +13,8 @@ AGENTS.md
 CAREER_AGENT_HANDOFF.md
 NEXT_CHAT_HANDOFF_*.md
 HELLO_AGENTS_STATUS.md
+ROADMAP.md
+docs/codex-handoff.md
 
 # 本地异常测试临时数据
 test_users.json

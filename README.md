@@ -4,9 +4,8 @@ CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它会读
 
 ## 文档导航
 
-- 当前功能、验证结果和下一步：[`PROJECT_STATUS.md`](PROJECT_STATUS.md)
-- 第一版包含与不包含的范围：[`PROJECT_SCOPE.md`](PROJECT_SCOPE.md)
-- V0.9—V1.4 后续开发计划：[`ROADMAP.md`](ROADMAP.md)
+- 当前功能与验证结果：[`PROJECT_STATUS.md`](PROJECT_STATUS.md)
+- 当前公开版本范围：[`PROJECT_SCOPE.md`](PROJECT_SCOPE.md)
 - 版本演进与历史验证证据：[`CAREER_AGENT_HISTORY.md`](CAREER_AGENT_HISTORY.md)
 
 ## 当前功能
