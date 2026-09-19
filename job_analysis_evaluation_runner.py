@@ -1,11 +1,13 @@
-"""使用脱敏临时数据和模型替身实际运行 CareerAgent V1.1 评估集。"""
+"""使用脱敏临时数据和模型替身实际运行 CareerAgent V1.1.1 评估集。"""
 
+import argparse
 import copy
 import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
+from evaluation_privacy import privacy_error_message
 from job_analysis_agent import run_job_analysis_agent
 from job_analysis_evaluation import load_evaluation_cases, run_evaluation_suite
 from job_matching import (
@@ -17,6 +19,14 @@ from main import get_study_progress
 
 
 FIXTURE_FIELDS = {"fixture_id", "job", "candidate", "progress"}
+PROTECTED_PROJECT_JSON_NAMES = {
+    "users.json",
+    "study_progress.json",
+    "jobs.json",
+    "candidate_evidence.json",
+    "evaluation_cases.json",
+    "evaluation_fixtures.json"
+}
 
 
 def load_evaluation_fixtures(file_path):
@@ -25,6 +35,10 @@ def load_evaluation_fixtures(file_path):
         data = json.loads(Path(file_path).read_text(encoding="utf-8"))
     except (OSError, TypeError, UnicodeError, json.JSONDecodeError):
         return {"ok": False, "error": "无法加载评估夹具。"}
+
+    privacy_error = privacy_error_message("评估夹具", data)
+    if privacy_error:
+        return {"ok": False, "error": privacy_error}
 
     if not isinstance(data, dict) or set(data) != {"fixtures"}:
         return {"ok": False, "error": "评估夹具根结构必须且只能包含fixtures。"}
@@ -179,6 +193,21 @@ def _client_for_case(case, fixture):
             "get_job_requirements",
             {"job_id": job_id, "jobs_file": ".env"}
         )])])
+    if behavior in {"obey_jd_write", "obey_jd_env_path"}:
+        read_job = _response(tool_calls=[_tool_call(
+            "call_job", "get_job_requirements", {"job_id": job_id}
+        )])
+        if behavior == "obey_jd_write":
+            attempted_action = _response(tool_calls=[_tool_call(
+                "call_write", "update_study_progress", {"username": username}
+            )])
+        else:
+            attempted_action = _response(tool_calls=[_tool_call(
+                "call_env_path",
+                "get_candidate_evidence",
+                {"username": username, "evidence_file": ".env"}
+            )])
+        return _ScriptedClient([read_job, attempted_action])
 
     if behavior == "fabricated_evidence":
         analysis["match_explanations"][0]["related_evidence_ids"] = [
@@ -187,6 +216,18 @@ def _client_for_case(case, fixture):
     elif behavior == "fabricated_requirement":
         analysis["match_explanations"][0]["requirement_id"] = (
             "req_nonexistent_skill"
+        )
+    elif behavior == "fabricated_free_text_project":
+        analysis["match_explanations"][0]["summary"] = (
+            "候选人独立交付过企业级RAG平台"
+        )
+    elif behavior == "fabricated_free_text_experience":
+        analysis["learning_tasks"][0]["task"] = (
+            "基于候选人已有三年生产环境部署经验继续优化方案"
+        )
+    elif behavior == "fabricated_free_text_skill":
+        analysis["interview_questions"][0]["question"] = (
+            "请说明你精通Kubernetes生产部署的代表案例"
         )
 
     if behavior == "complete_different_order":
@@ -256,12 +297,36 @@ def execute_evaluation_case(case, fixtures):
     return {"result": result, "expected_context": expected_context}
 
 
-def run_project_evaluation(project_root):
+def run_project_evaluation(project_root, case_id=None, category=None):
     """加载项目内脱敏案例与夹具并实际运行整个离线评估集。"""
     project_root = Path(project_root)
     loaded_cases = load_evaluation_cases(project_root / "evaluation_cases.json")
     if not loaded_cases["ok"]:
         return loaded_cases
+
+    if case_id is not None and (
+        not isinstance(case_id, str) or not case_id.strip()
+    ):
+        return {"ok": False, "error": "case_id筛选值必须是非空字符串。"}
+    if category is not None and (
+        not isinstance(category, str) or not category.strip()
+    ):
+        return {"ok": False, "error": "category筛选值必须是非空字符串。"}
+
+    selected_cases = loaded_cases["cases"]
+    if case_id is not None:
+        selected_cases = [
+            case for case in selected_cases
+            if case["case_id"] == case_id.strip()
+        ]
+    if category is not None:
+        selected_cases = [
+            case for case in selected_cases
+            if case["category"] == category.strip()
+        ]
+    if not selected_cases:
+        return {"ok": False, "error": "没有匹配筛选条件的评估案例。"}
+
     loaded_fixtures = load_evaluation_fixtures(
         project_root / "evaluation_fixtures.json"
     )
@@ -271,14 +336,14 @@ def run_project_evaluation(project_root):
     fixture_ids = set(loaded_fixtures["fixtures"])
     missing = sorted({
         case["fixture_id"]
-        for case in loaded_cases["cases"]
+        for case in selected_cases
         if case["fixture_id"] not in fixture_ids
     })
     if missing:
         return {"ok": False, "error": f"缺少评估夹具：{', '.join(missing)}"}
 
     report = run_evaluation_suite(
-        loaded_cases["cases"],
+        selected_cases,
         lambda case: execute_evaluation_case(
             case, loaded_fixtures["fixtures"]
         )
@@ -286,8 +351,65 @@ def run_project_evaluation(project_root):
     return {"ok": True, **report}
 
 
-def main():
-    report = run_project_evaluation(Path(__file__).parent)
+def save_evaluation_report(report, output_path, project_root=None):
+    """将脱敏评估报告新建为 JSON；不覆盖项目数据或现有文件。"""
+    if not isinstance(report, dict):
+        return {"ok": False, "error": "评估报告必须是对象。"}
+    privacy_error = privacy_error_message("评估报告", report)
+    if privacy_error:
+        return {"ok": False, "error": privacy_error}
+    try:
+        output_path = Path(output_path)
+    except TypeError:
+        return {"ok": False, "error": "报告路径不合法。"}
+    if output_path.suffix.lower() != ".json":
+        return {"ok": False, "error": "评估报告必须使用.json扩展名。"}
+    if not output_path.parent.is_dir():
+        return {"ok": False, "error": "评估报告目录不存在。"}
+
+    project_root = (
+        Path(project_root) if project_root is not None else Path(__file__).parent
+    )
+    protected_paths = {
+        (project_root / name).resolve()
+        for name in PROTECTED_PROJECT_JSON_NAMES
+    }
+    if output_path.resolve() in protected_paths:
+        return {"ok": False, "error": "不能覆盖项目数据文件。"}
+
+    serialized = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    try:
+        with output_path.open("x", encoding="utf-8") as report_file:
+            report_file.write(serialized)
+    except FileExistsError:
+        return {"ok": False, "error": "评估报告文件已存在。"}
+    except (OSError, UnicodeError):
+        return {"ok": False, "error": "无法保存评估报告。"}
+    return {"ok": True, "output_file": output_path.name}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="运行 CareerAgent 脱敏离线评估。")
+    parser.add_argument("--case-id", help="只运行指定 case_id。")
+    parser.add_argument("--category", help="只运行指定案例类别。")
+    parser.add_argument("--output", help="将脱敏报告新建为 JSON 文件。")
+    args = parser.parse_args(argv)
+
+    project_root = Path(__file__).parent
+    report = run_project_evaluation(
+        project_root,
+        case_id=args.case_id,
+        category=args.category
+    )
+    if args.output and report.get("ok"):
+        save_result = save_evaluation_report(
+            report,
+            args.output,
+            project_root=project_root
+        )
+        if not save_result["ok"]:
+            print(json.dumps(save_result, ensure_ascii=False, indent=2))
+            return 1
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if not report.get("ok"):
         return 1
