@@ -6,6 +6,7 @@ import unittest
 from collections import Counter
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from evaluation_privacy import find_sensitive_kinds
 from job_analysis_evaluation import (
@@ -31,13 +32,35 @@ VALID_RESULT = {
     "matches": [
         {
             "requirement_id": "req_python",
+            "skill_id": "python",
             "status": "matched",
             "related_evidence_ids": ["ev_python"]
         },
         {
             "requirement_id": "req_fastapi",
+            "skill_id": "fastapi",
             "status": "unverified",
             "related_evidence_ids": ["ev_fastapi"]
+        }
+    ],
+    "trusted_facts": [
+        {
+            "requirement_id": "req_python",
+            "skill_id": "python",
+            "status": "matched",
+            "related_evidence_ids": ["ev_python"],
+            "verified_evidence_ids": ["ev_python"],
+            "unverified_evidence_ids": [],
+            "origin": "python_deterministic_match"
+        },
+        {
+            "requirement_id": "req_fastapi",
+            "skill_id": "fastapi",
+            "status": "unverified",
+            "related_evidence_ids": ["ev_fastapi"],
+            "verified_evidence_ids": [],
+            "unverified_evidence_ids": ["ev_fastapi"],
+            "origin": "python_deterministic_match"
         }
     ],
     "analysis": {
@@ -76,6 +99,11 @@ VALID_RESULT = {
             "review_tasks": []
         }
     },
+    "analysis_metadata": {
+        "origin": "model_generated",
+        "verification_status": "unverified",
+        "trusted_fact_source": "trusted_facts"
+    },
     "used_tools": [
         "get_job_requirements",
         "get_candidate_evidence",
@@ -100,6 +128,16 @@ def make_case(**overrides):
     }
     case.update(overrides)
     return case
+
+
+def make_expected_context():
+    return {
+        "matches": copy.deepcopy(VALID_RESULT["matches"]),
+        "trusted_facts": copy.deepcopy(VALID_RESULT["trusted_facts"]),
+        "study_progress": copy.deepcopy(
+            VALID_RESULT["analysis"]["study_progress_source"]
+        )
+    }
 
 
 class EvaluationPrivacyTests(unittest.TestCase):
@@ -299,12 +337,7 @@ class EvaluationCaseSchemaTests(unittest.TestCase):
 
 class EvaluationMetricsTests(unittest.TestCase):
     def test_completed_result_passes_exact_source_and_match_checks(self):
-        context = {
-            "matches": copy.deepcopy(VALID_RESULT["matches"]),
-            "study_progress": copy.deepcopy(
-                VALID_RESULT["analysis"]["study_progress_source"]
-            )
-        }
+        context = make_expected_context()
 
         record = evaluate_case_result(
             make_case(), copy.deepcopy(VALID_RESULT), context
@@ -320,12 +353,7 @@ class EvaluationMetricsTests(unittest.TestCase):
         result["analysis"]["study_progress_source"]["python_progress"] = (
             "被模型改写"
         )
-        context = {
-            "matches": copy.deepcopy(VALID_RESULT["matches"]),
-            "study_progress": copy.deepcopy(
-                VALID_RESULT["analysis"]["study_progress_source"]
-            )
-        }
+        context = make_expected_context()
 
         record = evaluate_case_result(make_case(), result, context)
 
@@ -336,17 +364,86 @@ class EvaluationMetricsTests(unittest.TestCase):
     def test_changed_actual_match_source_fails_source_accuracy(self):
         result = copy.deepcopy(VALID_RESULT)
         result["matches"][0]["related_evidence_ids"] = ["ev_fake"]
-        context = {
-            "matches": copy.deepcopy(VALID_RESULT["matches"]),
-            "study_progress": copy.deepcopy(
-                VALID_RESULT["analysis"]["study_progress_source"]
-            )
-        }
+        context = make_expected_context()
 
         record = evaluate_case_result(make_case(), result, context)
 
         self.assertFalse(record["passed"])
         self.assertTrue(record["structure_passed"])
+        self.assertFalse(record["source_accurate"])
+
+    def test_changed_trusted_fact_fails_source_accuracy(self):
+        result = copy.deepcopy(VALID_RESULT)
+        result["trusted_facts"][0]["related_evidence_ids"] = ["ev_fake"]
+        result["trusted_facts"][0]["verified_evidence_ids"] = ["ev_fake"]
+
+        record = evaluate_case_result(
+            make_case(), result, make_expected_context()
+        )
+
+        self.assertFalse(record["passed"])
+        self.assertTrue(record["structure_passed"])
+        self.assertFalse(record["source_accurate"])
+
+    def test_fixture_truth_detects_shared_production_fact_bug(self):
+        loaded_cases = load_evaluation_cases(PROJECT_ROOT / "evaluation_cases.json")
+        loaded_fixtures = load_evaluation_fixtures(
+            PROJECT_ROOT / "evaluation_fixtures.json"
+        )
+        case = next(
+            item
+            for item in loaded_cases["cases"]
+            if item["case_id"] == "normal_project_data"
+        )
+
+        def wrong_trusted_facts(matches, evidence):
+            facts = [
+                {
+                    "requirement_id": match["requirement_id"],
+                    "skill_id": "wrong_skill",
+                    "status": match["status"],
+                    "related_evidence_ids": list(
+                        match["related_evidence_ids"]
+                    ),
+                    "verified_evidence_ids": [
+                        evidence_id
+                        for evidence_id in match["related_evidence_ids"]
+                        if next(
+                            item["verified"]
+                            for item in evidence
+                            if item["evidence_id"] == evidence_id
+                        )
+                    ],
+                    "unverified_evidence_ids": [
+                        evidence_id
+                        for evidence_id in match["related_evidence_ids"]
+                        if not next(
+                            item["verified"]
+                            for item in evidence
+                            if item["evidence_id"] == evidence_id
+                        )
+                    ],
+                    "origin": "python_deterministic_match"
+                }
+                for match in matches
+            ]
+            return facts
+
+        with patch(
+            "job_analysis_agent.build_trusted_facts",
+            side_effect=wrong_trusted_facts
+        ):
+            execution = execute_evaluation_case(
+                case, loaded_fixtures["fixtures"]
+            )
+
+        record = evaluate_case_result(
+            case,
+            execution["result"],
+            execution["expected_context"]
+        )
+
+        self.assertFalse(record["passed"])
         self.assertFalse(record["source_accurate"])
 
     def test_security_rejection_passes_expected_case(self):
@@ -384,12 +481,7 @@ class EvaluationMetricsTests(unittest.TestCase):
             ]
         )
 
-        context = {
-            "matches": copy.deepcopy(VALID_RESULT["matches"]),
-            "study_progress": copy.deepcopy(
-                VALID_RESULT["analysis"]["study_progress_source"]
-            )
-        }
+        context = make_expected_context()
 
         record = evaluate_case_result(case, copy.deepcopy(VALID_RESULT), context)
 
@@ -412,12 +504,7 @@ class EvaluationMetricsTests(unittest.TestCase):
         )
         result = copy.deepcopy(VALID_RESULT)
         result["used_tools"] = []
-        context = {
-            "matches": copy.deepcopy(VALID_RESULT["matches"]),
-            "study_progress": copy.deepcopy(
-                VALID_RESULT["analysis"]["study_progress_source"]
-            )
-        }
+        context = make_expected_context()
 
         record = evaluate_case_result(case, result, context)
 
@@ -518,6 +605,27 @@ class EvaluationMetricsTests(unittest.TestCase):
         self.assertFalse(record["free_text_fabrication_accepted"])
         self.assertTrue(record["free_text_fabrication_matches_expected"])
 
+    def test_free_text_metric_fails_claim_leaked_into_trusted_facts(self):
+        fabricated_claim = "候选人独立交付过企业级RAG平台"
+        case = make_case(
+            category="quality",
+            model_behavior="fabricated_free_text_project",
+            checks=["structure", "free_text_fabrication"],
+            forbidden_text_claims=[fabricated_claim],
+            expected_free_text_fabrication_accepted=True
+        )
+        result = copy.deepcopy(VALID_RESULT)
+        result["analysis"]["match_explanations"][0]["summary"] = (
+            fabricated_claim
+        )
+        result["trusted_facts"][0]["unsupported_claim"] = fabricated_claim
+
+        record = evaluate_case_result(case, result)
+
+        self.assertFalse(record["passed"])
+        self.assertTrue(record["free_text_fabrication_accepted"])
+        self.assertTrue(record["trusted_fact_free_text_leakage"])
+
     def test_summary_uses_only_applicable_dimension_denominators(self):
         records = [
             {
@@ -561,6 +669,18 @@ class EvaluationMetricsTests(unittest.TestCase):
         self.assertEqual(summary["security_rejection_rate"], 1.0)
         self.assertEqual(summary["security_safe_handling_rate"], 1.0)
         self.assertEqual(summary["security_handling_rate"], 1.0)
+        self.assertEqual(summary["metric_counts"]["case_expected_result_agreement"], {
+            "numerator": 3,
+            "denominator": 3,
+            "applicable_cases": 3,
+            "rate": 1.0
+        })
+        self.assertEqual(summary["metric_counts"]["source_accuracy"], {
+            "numerator": 2,
+            "denominator": 2,
+            "applicable_cases": 2,
+            "rate": 1.0
+        })
 
 
 class RunnableEvaluationSuiteTests(unittest.TestCase):
@@ -601,12 +721,7 @@ class RunnableEvaluationSuiteTests(unittest.TestCase):
                 raise RuntimeError("包含不应写入报告的本地异常细节")
             return {
                 "result": copy.deepcopy(VALID_RESULT),
-                "expected_context": {
-                    "matches": copy.deepcopy(VALID_RESULT["matches"]),
-                    "study_progress": copy.deepcopy(
-                        VALID_RESULT["analysis"]["study_progress_source"]
-                    )
-                }
+                "expected_context": make_expected_context()
             }
 
         report = run_evaluation_suite(cases, execute_case)
@@ -656,6 +771,31 @@ class RunnableEvaluationSuiteTests(unittest.TestCase):
         )
         self.assertEqual(report["summary"]["security_handling_rate"], 0.0)
 
+    def test_case_exception_does_not_count_as_no_trusted_fact_leakage(self):
+        fabricated_claim = "候选人独立交付过企业级RAG平台"
+        case = make_case(
+            case_id="broken_free_text_case",
+            category="quality",
+            model_behavior="fabricated_free_text_project",
+            checks=["structure", "free_text_fabrication"],
+            forbidden_text_claims=[fabricated_claim],
+            expected_free_text_fabrication_accepted=True
+        )
+
+        def execute_case(_case):
+            raise RuntimeError("offline")
+
+        report = run_evaluation_suite([case], execute_case)
+
+        record = report["records"][0]
+        leakage_counts = report["summary"]["metric_counts"][
+            "trusted_fact_free_text_leakage"
+        ]
+        self.assertFalse(record["execution_succeeded"])
+        self.assertIsNone(record["trusted_fact_free_text_leakage"])
+        self.assertEqual(leakage_counts["applicable_cases"], 0)
+        self.assertIsNone(leakage_counts["rate"])
+
     def test_project_evaluation_can_filter_one_case_id(self):
         report = run_project_evaluation(
             PROJECT_ROOT,
@@ -677,6 +817,30 @@ class RunnableEvaluationSuiteTests(unittest.TestCase):
         self.assertTrue(
             all(record["category"] == "security" for record in report["records"])
         )
+
+    def test_project_report_explains_reproduction_scope_and_limitations(self):
+        report = run_project_evaluation(PROJECT_ROOT)
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["report_metadata"]["version"], "V1.2")
+        self.assertEqual(
+            report["report_metadata"]["evaluation_mode"],
+            "offline_scripted_model_responses"
+        )
+        self.assertEqual(
+            report["report_metadata"]["case_category_counts"],
+            {"normal": 6, "data_error": 5, "security": 11, "quality": 4}
+        )
+        self.assertIn(
+            "job_analysis_evaluation_runner.py",
+            report["report_metadata"]["reproduction_command"]
+        )
+        limitations = "\n".join(report["report_metadata"]["limitations"])
+        self.assertIn("26/26", limitations)
+        self.assertIn("0/4", limitations)
+        self.assertIn("不能表示真实模型", limitations)
+        self.assertIn("不是完整语义幻觉检测", limitations)
+        self.assertEqual(find_sensitive_kinds(report), [])
 
     def test_cli_can_filter_one_case_and_save_sanitized_report(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -726,6 +890,17 @@ class RunnableEvaluationSuiteTests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertEqual(output_path.read_text(encoding="utf-8"), "original")
 
+    def test_saved_v1_2_report_matches_current_offline_evaluation(self):
+        report_path = (
+            PROJECT_ROOT / "examples" /
+            "careeragent_v1_2_evaluation_report.json"
+        )
+        saved_report = json.loads(report_path.read_text(encoding="utf-8"))
+        current_report = run_project_evaluation(PROJECT_ROOT)
+
+        self.assertEqual(saved_report, current_report)
+        self.assertEqual(find_sensitive_kinds(saved_report), [])
+
     def test_all_twenty_six_cases_run_offline_without_changing_project_data(self):
         data_paths = [
             PROJECT_ROOT / "users.json",
@@ -747,6 +922,28 @@ class RunnableEvaluationSuiteTests(unittest.TestCase):
         self.assertEqual(
             report["summary"]["free_text_fabrication_acceptance_rate"],
             0.75
+        )
+        self.assertEqual(
+            report["summary"]["trusted_fact_free_text_leakage_rate"],
+            0.0
+        )
+        self.assertEqual(
+            report["summary"]["metric_counts"]["free_text_fabrication_acceptance"],
+            {
+                "numerator": 3,
+                "denominator": 4,
+                "applicable_cases": 4,
+                "rate": 0.75
+            }
+        )
+        self.assertEqual(
+            report["summary"]["metric_counts"]["trusted_fact_free_text_leakage"],
+            {
+                "numerator": 0,
+                "denominator": 4,
+                "applicable_cases": 4,
+                "rate": 0.0
+            }
         )
         self.assertEqual(report["summary"]["structure_pass_rate"], 1.0)
         self.assertEqual(report["summary"]["source_accuracy_rate"], 1.0)

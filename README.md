@@ -1,8 +1,8 @@
 # CareerAgent
 
-CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它使用受控工具读取脱敏岗位、候选人证据和学习进度，由 Python 计算并核对匹配结果，再让千问生成带可验证来源的结构化建议。
+CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它使用受控工具读取脱敏岗位、候选人证据和学习进度，由 Python 计算并核对匹配结果，再让千问生成明确标为未验证内容的结构化建议。
 
-最新版本：`V1.1.1`
+最新版本：`V1.2`
 
 ## 文档导航
 
@@ -30,8 +30,10 @@ CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它使用
 - 岗位描述与证据描述始终作为待分析数据处理，其中的文字不能扩大工具权限或变成系统指令。
 - V1.1 新增 19 个可运行的脱敏离线评估案例、10 组固定夹具和批量评估运行器。
 - V1.1.1 将离线评估扩至 26 个案例：按配置的禁止声明检查模型生成的自由文本，单案例异常记为失败后继续运行，并增加恶意 JD 与危险服从行为的配对案例。
+- V1.2 新增 `trusted_facts`：只保存 Python 确定的岗位要求 ID、技能 ID、匹配状态及已验证／未验证证据 ID，不接收模型生成的解释、任务或问题；生成时会重新核对证据技能、能力层级和四种状态。
+- 模型分析通过 `analysis_metadata` 标记为 `model_generated` 和 `unverified`；模型不可用时，本地回退仍可保留可信事实，但不会伪造模型分析。
 - 评估命令支持筛选单个案例或类别，并可将通过格式隐私扫描的报告新建为 JSON；已有文件和项目数据不会被覆盖。
-- 评估指标分别计算执行成功率、结构通过率、来源准确率、匹配一致性、结构化及配置短语的自由文本虚构接受率和安全处理率。
+- 评估指标分别计算执行成功率、结构通过率、来源准确率、匹配一致性、结构化及配置短语的自由文本虚构接受率、可信事实泄漏率和安全处理率，并同时公开分子、分母、适用案例数和比例。
 - 安全评估覆盖跨用户、跨岗位、任意路径、未授权写入、伪造要求或证据 ID、提示词注入和伪造 `CONFIRM`。
 - 模型不可用时会明确返回失败，同时保留 Python 确定性本地匹配；不会伪装模型分析成功或无限重试。
 
@@ -137,7 +139,7 @@ CAREER_AGENT_MODE=rule
 
 单元测试使用模型响应替身，不会真实调用千问，也不会产生模型费用。
 
-运行 V1.1.1 脱敏离线评估集：
+运行 V1.2 脱敏离线评估集：
 
 ```powershell
 .venv\Scripts\python.exe job_analysis_evaluation_runner.py
@@ -148,7 +150,7 @@ CAREER_AGENT_MODE=rule
 ```powershell
 .venv\Scripts\python.exe job_analysis_evaluation_runner.py --case-id normal_project_data
 .venv\Scripts\python.exe job_analysis_evaluation_runner.py --category security
-.venv\Scripts\python.exe job_analysis_evaluation_runner.py --output "$env:TEMP\careeragent-v1-1-1-evaluation.json"
+.venv\Scripts\python.exe job_analysis_evaluation_runner.py --output "$env:TEMP\careeragent-v1-2-evaluation.json"
 ```
 
 `--output` 仅接受 `.json` 路径，目标目录必须已存在，且不会覆盖已有文件或项目数据。保存前会扫描报告中的常见手机号、邮箱、绝对本地路径和密钥／令牌格式；这是有限的格式检查，不能保证发现所有敏感信息。
@@ -171,6 +173,10 @@ V1.1.1 的完整测试为 142 项，全部通过；26/26 个固定离线案例�
 
 上述 V1.1.1 指标只描述固定脱敏案例和模型响应替身，不能推广为真实模型面对任意 JD 的准确率或安全性。自由文本检查仅覆盖案例中明确配置的禁止声明，不是完整的语义幻觉检测。
 
+V1.2 的完整测试为 153 项，全部通过。26/26 个固定案例的观察结果符合预设；模型生成自由文本的虚构声明接受数为 3/4，已知虚构声明进入 `trusted_facts` 的数量为 0/4。后者只证明当前四个适用案例的结构隔离生效，**不表示模型已经停止产生幻觉**。每项汇总指标都在报告中列出分子、分母、适用案例数和比例；可信事实预期值由案例预设和原始夹具独立构造，不复用生产生成函数。
+
+V1.2 仍只使用固定脱敏案例和模型响应替身，没有调用真实千问。正式报告见 [`examples/careeragent_v1_2_evaluation_report.json`](examples/careeragent_v1_2_evaluation_report.json)；报告中的局限说明属于结果的一部分。
+
 V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`，生成的三类建议均携带可核对的 `sources`，并通过 Python 本地来源校验。该次运行没有执行写入工具。
 
 脱敏运行证据：
@@ -179,6 +185,7 @@ V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`
 - [`examples/careeragent_v0_7_confirmed_update_output.json`](examples/careeragent_v0_7_confirmed_update_output.json)：模型提案、用户确认与写入成功；其中复习任务保留当时的 V0.7 历史结构。
 - [`examples/careeragent_v0_9b_job_match_output.json`](examples/careeragent_v0_9b_job_match_output.json)：两个岗位/证据只读工具与 Python 确定性匹配结果；不调用真实模型。
 - [`examples/careeragent_v1_0_job_analysis_output.json`](examples/careeragent_v1_0_job_analysis_output.json)：三个只读工具、Python 权威匹配和结构化岗位分析；明确标注为离线模型替身示例。
+- [`examples/careeragent_v1_2_evaluation_report.json`](examples/careeragent_v1_2_evaluation_report.json)：26 个固定案例的脱敏离线报告，包含案例分类、完整计数指标、复现命令和局限说明。
 
 受控写入脱敏演示截图（离线测试数据与模型响应替身，不调用真实 API，也不修改真实学习数据）：
 
@@ -191,7 +198,7 @@ V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`
 → 加载并验证用户
 → 选择 advice、job 或 update
 ├─ advice：千问调用只读工具 → 生成建议和sources → Python核对来源
-├─ job：千问调用三个只读工具 → Python计算匹配 → 模型解释 → Python核对状态和来源
+├─ job：千问调用三个只读工具 → Python计算匹配与可信事实 → 模型生成未验证解释 → Python核对状态和来源
 ├─ update：千问生成参数提案 → Python验证 → 用户确认 → 执行或取消
 └─ evaluation：加载脱敏案例和夹具 → 临时数据 → 模型替身运行Agent → 汇总指标
 ```
@@ -202,4 +209,4 @@ V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`
 - `requested_tools` 表示模型提出调用，`used_tools` 表示 Python 已实际执行；取消时后者为空，确认执行后才包含写入工具。
 - 当前没有 RAG、多 Agent、网页前端、自动岗位搜索或自动投递。
 - `used_tools` 记录实际执行过的工具；`trace` 同时记录模型决策和程序动作。
-- V1.1.1 安全与评估结果来自固定脱敏数据和模型替身，不冒充真实模型红队测试结论。
+- V1.2 安全与评估结果来自固定脱敏数据和模型替身，不冒充真实模型红队测试结论；`0/4` 可信事实泄漏也不等于完整幻觉治理。

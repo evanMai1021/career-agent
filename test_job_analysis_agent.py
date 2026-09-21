@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from job_analysis_agent import run_job_analysis_agent
+from job_analysis_agent import build_trusted_facts, run_job_analysis_agent
 from job_matching import get_candidate_evidence, get_job_requirements
 from main import get_study_progress
 
@@ -170,6 +170,133 @@ def make_valid_analysis():
     }
 
 
+class TrustedFactsTests(unittest.TestCase):
+    def test_builds_all_four_statuses_from_deterministic_matches(self):
+        matches = [
+            {
+                "requirement_id": "req_matched",
+                "skill_id": "python",
+                "status": "matched",
+                "related_evidence_ids": ["ev_project", "ev_unverified"]
+            },
+            {
+                "requirement_id": "req_partial",
+                "skill_id": "testing",
+                "status": "partial",
+                "related_evidence_ids": ["ev_practice"]
+            },
+            {
+                "requirement_id": "req_missing",
+                "skill_id": "database",
+                "status": "missing",
+                "related_evidence_ids": []
+            },
+            {
+                "requirement_id": "req_unverified",
+                "skill_id": "fastapi",
+                "status": "unverified",
+                "related_evidence_ids": ["ev_learning"]
+            }
+        ]
+        evidence = [
+            {
+                "evidence_id": "ev_project",
+                "skill_id": "python",
+                "level": "project",
+                "verified": True
+            },
+            {
+                "evidence_id": "ev_unverified",
+                "skill_id": "python",
+                "level": "learning",
+                "verified": False
+            },
+            {
+                "evidence_id": "ev_practice",
+                "skill_id": "testing",
+                "level": "practice",
+                "verified": True
+            },
+            {
+                "evidence_id": "ev_learning",
+                "skill_id": "fastapi",
+                "level": "learning",
+                "verified": False
+            }
+        ]
+
+        facts = build_trusted_facts(matches, evidence)
+
+        self.assertEqual([fact["status"] for fact in facts], [
+            "matched", "partial", "missing", "unverified"
+        ])
+        self.assertEqual(
+            facts[0]["verified_evidence_ids"], ["ev_project"]
+        )
+        self.assertEqual(
+            facts[0]["unverified_evidence_ids"], ["ev_unverified"]
+        )
+        self.assertEqual(facts[2]["related_evidence_ids"], [])
+        self.assertEqual(facts[3]["verified_evidence_ids"], [])
+        self.assertEqual(facts[3]["unverified_evidence_ids"], ["ev_learning"])
+        self.assertTrue(all(
+            fact["origin"] == "python_deterministic_match"
+            for fact in facts
+        ))
+        expected_keys = {
+            "requirement_id",
+            "skill_id",
+            "status",
+            "related_evidence_ids",
+            "verified_evidence_ids",
+            "unverified_evidence_ids",
+            "origin"
+        }
+        self.assertTrue(all(set(fact) == expected_keys for fact in facts))
+
+    def test_rejects_status_without_required_evidence_basis(self):
+        with self.assertRaisesRegex(ValueError, "可信事实与证据验证状态不一致"):
+            build_trusted_facts([{
+                "requirement_id": "req_python",
+                "skill_id": "python",
+                "status": "matched",
+                "related_evidence_ids": ["ev_unverified"]
+            }], [{
+                "evidence_id": "ev_unverified",
+                "skill_id": "python",
+                "level": "project",
+                "verified": False
+            }])
+
+    def test_rejects_evidence_for_another_skill(self):
+        with self.assertRaisesRegex(ValueError, "证据技能对应关系不一致"):
+            build_trusted_facts([{
+                "requirement_id": "req_python",
+                "skill_id": "python",
+                "status": "partial",
+                "related_evidence_ids": ["ev_fastapi"]
+            }], [{
+                "evidence_id": "ev_fastapi",
+                "skill_id": "fastapi",
+                "level": "learning",
+                "verified": True
+            }])
+
+    def test_rejects_matched_status_from_verified_learning_evidence(self):
+        with self.assertRaisesRegex(ValueError, "证据验证状态不一致"):
+            build_trusted_facts([{
+                "requirement_id": "req_python",
+                "skill_id": "python",
+                "status": "matched",
+                "related_evidence_ids": ["ev_python_learning"]
+            }], [{
+                "evidence_id": "ev_python_learning",
+                "skill_id": "python",
+                "level": "learning",
+                "verified": True
+            }])
+
+
 class JobAnalysisAgentTests(unittest.TestCase):
     def setUp(self):
         self.job_tool = MagicMock(return_value=copy.deepcopy(JOB_RESULT))
@@ -227,6 +354,15 @@ class JobAnalysisAgentTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["matches"], EXPECTED_MATCHES)
         self.assertEqual(result["analysis"], make_valid_analysis())
+        self.assertEqual(result["analysis_metadata"], {
+            "origin": "model_generated",
+            "verification_status": "unverified",
+            "trusted_fact_source": "trusted_facts"
+        })
+        self.assertEqual(
+            [fact["status"] for fact in result["trusted_facts"]],
+            ["matched", "partial", "unverified"]
+        )
         self.assertEqual(result["used_tools"], [
             "get_job_requirements",
             "get_candidate_evidence",
@@ -242,6 +378,31 @@ class JobAnalysisAgentTests(unittest.TestCase):
         )
         self.progress_tool.assert_called_once_with(
             "test_user", "study_progress.json"
+        )
+
+    def test_known_fabricated_text_stays_out_of_trusted_facts(self):
+        fabricated_claims = [
+            "候选人独立交付过企业级RAG平台",
+            "候选人已有三年生产环境部署经验",
+            "精通Kubernetes生产部署"
+        ]
+        analysis = make_valid_analysis()
+        analysis["match_explanations"][0]["summary"] = fabricated_claims[0]
+        analysis["learning_tasks"][0]["task"] = fabricated_claims[1]
+        analysis["interview_questions"][0]["question"] = fabricated_claims[2]
+
+        client = self.make_happy_client(analysis)
+        result = self.run_agent(client)
+
+        self.assertTrue(result["ok"])
+        generated_text = json.dumps(result["analysis"], ensure_ascii=False)
+        trusted_text = json.dumps(result["trusted_facts"], ensure_ascii=False)
+        for claim in fabricated_claims:
+            self.assertIn(claim, generated_text)
+            self.assertNotIn(claim, trusted_text)
+        self.assertEqual(
+            result["analysis_metadata"]["verification_status"],
+            "unverified"
         )
 
         for request in client.chat.completions.create.call_args_list[:3]:
@@ -526,6 +687,11 @@ class JobAnalysisAgentTests(unittest.TestCase):
             "mode": "python_deterministic_match",
             "available": True
         })
+        self.assertEqual(
+            [fact["status"] for fact in result["trusted_facts"]],
+            ["matched", "partial", "unverified"]
+        )
+        self.assertNotIn("analysis", result)
         self.assertEqual(result["used_tools"], [
             "get_job_requirements",
             "get_candidate_evidence"

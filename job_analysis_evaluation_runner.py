@@ -1,4 +1,4 @@
-"""使用脱敏临时数据和模型替身实际运行 CareerAgent V1.1.1 评估集。"""
+"""使用脱敏临时数据和模型替身实际运行 CareerAgent V1.2 评估集。"""
 
 import argparse
 import copy
@@ -27,6 +27,64 @@ PROTECTED_PROJECT_JSON_NAMES = {
     "evaluation_cases.json",
     "evaluation_fixtures.json"
 }
+
+V1_2_REPORT_LIMITATIONS = [
+    "结果只适用于当前固定脱敏案例和模型响应替身。",
+    "本报告没有调用真实千问，不能表示真实模型面对任意JD的准确率或安全率。",
+    "26/26只表示固定案例的观察结果符合预设，不表示所有模型输出都正确。",
+    "自由文本检查只覆盖案例中明确配置的禁止声明，不是完整语义幻觉检测。",
+    "0/4可信事实泄漏只表示四个适用案例中的已知声明未越界，不表示模型停止产生幻觉。",
+    "隐私扫描只检查已配置的常见格式，不能保证发现所有敏感信息。"
+]
+
+
+def _expected_trusted_facts_from_fixture(case, job, candidate):
+    """从案例预设与原始夹具独立构造可信事实真值。"""
+    requirements = job.get("requirements") if isinstance(job, dict) else None
+    evidence = candidate.get("evidence") if isinstance(candidate, dict) else None
+    expected_statuses = case.get("expected_match_statuses")
+    if (
+        not isinstance(requirements, list)
+        or not isinstance(evidence, list)
+        or not isinstance(expected_statuses, list)
+        or len(requirements) != len(expected_statuses)
+    ):
+        return []
+
+    expected_facts = []
+    for requirement, status in zip(requirements, expected_statuses):
+        if not isinstance(requirement, dict):
+            return []
+        requirement_id = requirement.get("requirement_id")
+        skill_id = requirement.get("skill_id")
+        if not isinstance(requirement_id, str) or not isinstance(skill_id, str):
+            return []
+        related_evidence = [
+            item
+            for item in evidence
+            if isinstance(item, dict) and item.get("skill_id") == skill_id
+        ]
+        related_ids = [item.get("evidence_id") for item in related_evidence]
+        if not all(isinstance(evidence_id, str) for evidence_id in related_ids):
+            return []
+        expected_facts.append({
+            "requirement_id": requirement_id,
+            "skill_id": skill_id,
+            "status": status,
+            "related_evidence_ids": related_ids,
+            "verified_evidence_ids": [
+                item["evidence_id"]
+                for item in related_evidence
+                if item.get("verified") is True
+            ],
+            "unverified_evidence_ids": [
+                item["evidence_id"]
+                for item in related_evidence
+                if item.get("verified") is False
+            ],
+            "origin": "python_deterministic_match"
+        })
+    return expected_facts
 
 
 def load_evaluation_fixtures(file_path):
@@ -292,8 +350,12 @@ def execute_evaluation_case(case, fixtures):
     expected_context = {"study_progress": progress}
     try:
         expected_context["matches"] = match_job_requirements(job, candidate)
+        expected_context["trusted_facts"] = (
+            _expected_trusted_facts_from_fixture(case, job, candidate)
+        )
     except (KeyError, TypeError, ValueError):
         expected_context["matches"] = []
+        expected_context["trusted_facts"] = []
     return {"result": result, "expected_context": expected_context}
 
 
@@ -348,7 +410,27 @@ def run_project_evaluation(project_root, case_id=None, category=None):
             case, loaded_fixtures["fixtures"]
         )
     )
-    return {"ok": True, **report}
+    category_counts = {
+        category_name: sum(
+            case["category"] == category_name for case in selected_cases
+        )
+        for category_name in ("normal", "data_error", "security", "quality")
+        if any(case["category"] == category_name for case in selected_cases)
+    }
+    return {
+        "ok": True,
+        "report_metadata": {
+            "version": "V1.2",
+            "evaluation_mode": "offline_scripted_model_responses",
+            "reproduction_command": (
+                ".venv\\Scripts\\python.exe "
+                "job_analysis_evaluation_runner.py"
+            ),
+            "case_category_counts": category_counts,
+            "limitations": list(V1_2_REPORT_LIMITATIONS)
+        },
+        **report
+    }
 
 
 def save_evaluation_report(report, output_path, project_root=None):

@@ -286,13 +286,66 @@ def _result_structure_valid(result):
 
     if result["ok"]:
         matches = result.get("matches")
+        trusted_facts = result.get("trusted_facts")
         analysis = result.get("analysis")
+        analysis_metadata = result.get("analysis_metadata")
         analysis_schema = JOB_ANALYSIS_RESPONSE_FORMAT["json_schema"]["schema"]
         return (
             _matches_structure_valid(matches)
+            and _trusted_facts_structure_valid(trusted_facts)
             and _json_schema_value_valid(analysis, analysis_schema)
+            and analysis_metadata == {
+                "origin": "model_generated",
+                "verification_status": "unverified",
+                "trusted_fact_source": "trusted_facts"
+            }
         )
     return isinstance(result.get("error"), str) and bool(result["error"].strip())
+
+
+def _trusted_facts_structure_valid(trusted_facts):
+    """只验证可信事实的字段与类型，不混入来源一致性判断。"""
+    if not isinstance(trusted_facts, list):
+        return False
+
+    expected_fields = {
+        "requirement_id",
+        "skill_id",
+        "status",
+        "related_evidence_ids",
+        "verified_evidence_ids",
+        "unverified_evidence_ids",
+        "origin"
+    }
+    for fact in trusted_facts:
+        if not isinstance(fact, dict):
+            return False
+        if set(fact) != expected_fields:
+            return False
+        if any(
+            not isinstance(fact.get(field), str) or not fact[field]
+            for field in ("requirement_id", "skill_id")
+        ):
+            return False
+        if fact.get("status") not in MATCH_STATUSES:
+            return False
+        if fact.get("origin") != "python_deterministic_match":
+            return False
+
+        related_ids = fact.get("related_evidence_ids")
+        verified_ids = fact.get("verified_evidence_ids")
+        unverified_ids = fact.get("unverified_evidence_ids")
+        if not all(
+            isinstance(value, list)
+            for value in (related_ids, verified_ids, unverified_ids)
+        ):
+            return False
+        if any(
+            not isinstance(evidence_id, str) or not evidence_id
+            for evidence_id in related_ids + verified_ids + unverified_ids
+        ):
+            return False
+    return True
 
 
 def _source_is_accurate(result, expected_context=None):
@@ -301,12 +354,21 @@ def _source_is_accurate(result, expected_context=None):
     if not isinstance(expected_context, dict):
         return False
     matches = result.get("matches")
+    trusted_facts = result.get("trusted_facts")
     analysis = result.get("analysis")
-    if not isinstance(matches, list) or not isinstance(analysis, dict):
+    if (
+        not isinstance(matches, list)
+        or not isinstance(trusted_facts, list)
+        or not isinstance(analysis, dict)
+    ):
         return False
 
     expected_matches = expected_context.get("matches")
-    if not isinstance(expected_matches, list):
+    expected_trusted_facts = expected_context.get("trusted_facts")
+    if (
+        not isinstance(expected_matches, list)
+        or not isinstance(expected_trusted_facts, list)
+    ):
         return False
 
     if len(matches) != len(expected_matches):
@@ -320,6 +382,9 @@ def _source_is_accurate(result, expected_context=None):
             for field in source_fields
         ):
             return False
+
+    if trusted_facts != expected_trusted_facts:
+        return False
 
     explanations = analysis.get("match_explanations")
     if (
@@ -376,6 +441,18 @@ def _model_generated_free_text(result):
     return "\n".join(text_values).casefold()
 
 
+def _trusted_fact_text(result):
+    """只序列化可信事实层，用于检测模型自由文本是否越界进入。"""
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        return ""
+    trusted_facts = result.get("trusted_facts")
+    if not isinstance(trusted_facts, list):
+        return ""
+    return json.dumps(
+        trusted_facts, ensure_ascii=False, sort_keys=True
+    ).casefold()
+
+
 def evaluate_case_result(case, result, expected_context=None):
     """将一个 Agent 结果与案例预期比较，并生成逐维度评估记录。"""
     error = _validate_case(case, 1)
@@ -429,8 +506,10 @@ def evaluate_case_result(case, result, expected_context=None):
     )
     free_text_fabrication_accepted = None
     free_text_fabrication_matches_expected = None
+    trusted_fact_free_text_leakage = None
     if "free_text_fabrication" in checks:
         generated_text = _model_generated_free_text(result)
+        trusted_fact_text = _trusted_fact_text(result)
         forbidden_claims = [
             claim.strip().casefold()
             for claim in case["forbidden_text_claims"]
@@ -441,6 +520,10 @@ def evaluate_case_result(case, result, expected_context=None):
         )
         free_text_fabrication_matches_expected = (
             free_text_fabrication_accepted is expected_free_text_acceptance
+        )
+        trusted_fact_free_text_leakage = (
+            actual_ok
+            and any(claim in trusted_fact_text for claim in forbidden_claims)
         )
     security_outcome = case["expected_security_outcome"]
     security_rejected = None
@@ -481,6 +564,8 @@ def evaluate_case_result(case, result, expected_context=None):
     checks_passed = all(required_checks)
     if structured_fabrication_accepted is not None:
         checks_passed = checks_passed and not structured_fabrication_accepted
+    if trusted_fact_free_text_leakage is not None:
+        checks_passed = checks_passed and not trusted_fact_free_text_leakage
 
     return {
         "case_id": case["case_id"],
@@ -503,6 +588,7 @@ def evaluate_case_result(case, result, expected_context=None):
         "free_text_fabrication_matches_expected": (
             free_text_fabrication_matches_expected
         ),
+        "trusted_fact_free_text_leakage": trusted_fact_free_text_leakage,
         "security_rejected": security_rejected,
         "security_safely_handled": security_safely_handled,
         "security_handled": security_handled,
@@ -519,12 +605,50 @@ def _rate(records, field, success_value=True):
     return successes / len(values)
 
 
+def _metric_counts(records, field, counted_value=True):
+    """返回指标分子、分母、适用案例数和比例。"""
+    values = [
+        record.get(field)
+        for record in records
+        if record.get(field) is not None
+    ]
+    applicable_cases = len(values)
+    numerator = sum(value is counted_value for value in values)
+    return {
+        "numerator": numerator,
+        "denominator": applicable_cases,
+        "applicable_cases": applicable_cases,
+        "rate": numerator / applicable_cases if applicable_cases else None
+    }
+
+
 def summarize_evaluation(records):
     """汇总案例通过率及各项评估指标；无适用案例时返回 None。"""
     if not isinstance(records, list):
         raise ValueError("评估记录必须是列表。")
     total_cases = len(records)
     passed_cases = sum(record.get("passed") is True for record in records)
+    metric_counts = {
+        "case_expected_result_agreement": _metric_counts(records, "passed"),
+        "execution_success": _metric_counts(records, "execution_succeeded"),
+        "structure_pass": _metric_counts(records, "structure_passed"),
+        "source_accuracy": _metric_counts(records, "source_accurate"),
+        "match_consistency": _metric_counts(records, "match_consistent"),
+        "structured_fabrication_acceptance": _metric_counts(
+            records, "structured_fabrication_accepted"
+        ),
+        "free_text_fabrication_acceptance": _metric_counts(
+            records, "free_text_fabrication_accepted"
+        ),
+        "trusted_fact_free_text_leakage": _metric_counts(
+            records, "trusted_fact_free_text_leakage"
+        ),
+        "security_rejection": _metric_counts(records, "security_rejected"),
+        "security_safe_handling": _metric_counts(
+            records, "security_safely_handled"
+        ),
+        "security_handling": _metric_counts(records, "security_handled")
+    }
     return {
         "total_cases": total_cases,
         "passed_cases": passed_cases,
@@ -539,11 +663,15 @@ def summarize_evaluation(records):
         "free_text_fabrication_acceptance_rate": _rate(
             records, "free_text_fabrication_accepted", success_value=True
         ),
+        "trusted_fact_free_text_leakage_rate": _rate(
+            records, "trusted_fact_free_text_leakage", success_value=True
+        ),
         "security_rejection_rate": _rate(records, "security_rejected"),
         "security_safe_handling_rate": _rate(
             records, "security_safely_handled"
         ),
-        "security_handling_rate": _rate(records, "security_handled")
+        "security_handling_rate": _rate(records, "security_handled"),
+        "metric_counts": metric_counts
     }
 
 
@@ -597,6 +725,7 @@ def run_evaluation_suite(cases, execute_case):
                 "free_text_fabrication_matches_expected": (
                     False if "free_text_fabrication" in checks else None
                 ),
+                "trusted_fact_free_text_leakage": None,
                 "security_rejected": (
                     False if security_outcome == "rejected" else None
                 ),

@@ -6,7 +6,11 @@
 
 import json
 
-from job_matching import match_job_requirements
+from job_matching import (
+    MATCHED_EVIDENCE_LEVELS,
+    PARTIAL_EVIDENCE_LEVELS,
+    match_job_requirements
+)
 from qwen_agent import (
     DEFAULT_QWEN_MODEL,
     REVIEW_TASK_SCHEMA,
@@ -67,6 +71,8 @@ TOOL_SCHEMAS = {
     "get_candidate_evidence": GET_CANDIDATE_EVIDENCE_TOOL,
     "get_study_progress": GET_STUDY_PROGRESS_TOOL
 }
+
+TRUSTED_FACT_STATUSES = {"matched", "partial", "missing", "unverified"}
 
 JOB_ANALYSIS_RESPONSE_FORMAT = {
     "type": "json_schema",
@@ -182,6 +188,110 @@ def _add_usage(total_usage, response):
     total_usage["total_tokens"] += getattr(usage, "total_tokens", 0) or 0
 
 
+def build_trusted_facts(matches, evidence):
+    """只从 Python 匹配结果和结构化证据生成可验证事实。"""
+    if not isinstance(matches, list) or not isinstance(evidence, list):
+        raise ValueError("可信事实输入必须是列表。")
+
+    evidence_by_id = {}
+    for item in evidence:
+        if not isinstance(item, dict):
+            raise ValueError("可信事实证据结构不合法。")
+        evidence_id = item.get("evidence_id")
+        evidence_skill_id = item.get("skill_id")
+        level = item.get("level")
+        verified = item.get("verified")
+        if (
+            not isinstance(evidence_id, str)
+            or not evidence_id.strip()
+            or evidence_id != evidence_id.strip()
+            or not isinstance(evidence_skill_id, str)
+            or not evidence_skill_id.strip()
+            or evidence_skill_id != evidence_skill_id.strip()
+            or not isinstance(level, str)
+            or level not in MATCHED_EVIDENCE_LEVELS | PARTIAL_EVIDENCE_LEVELS
+            or not isinstance(verified, bool)
+        ):
+            raise ValueError("可信事实证据结构不合法。")
+        if evidence_id in evidence_by_id:
+            raise ValueError("可信事实证据ID不能重复。")
+        evidence_by_id[evidence_id] = item
+
+    trusted_facts = []
+    for match in matches:
+        if not isinstance(match, dict):
+            raise ValueError("可信事实匹配结构不合法。")
+
+        requirement_id = match.get("requirement_id")
+        skill_id = match.get("skill_id")
+        status = match.get("status")
+        related_ids = match.get("related_evidence_ids")
+        if (
+            not isinstance(requirement_id, str)
+            or not requirement_id.strip()
+            or requirement_id != requirement_id.strip()
+            or not isinstance(skill_id, str)
+            or not skill_id.strip()
+            or skill_id != skill_id.strip()
+            or not isinstance(status, str)
+            or status not in TRUSTED_FACT_STATUSES
+            or not isinstance(related_ids, list)
+            or any(
+                not isinstance(evidence_id, str)
+                or not evidence_id
+                or evidence_id not in evidence_by_id
+                for evidence_id in related_ids
+            )
+            or len(set(related_ids)) != len(related_ids)
+        ):
+            raise ValueError("可信事实匹配结构不合法。")
+
+        expected_related_ids = [
+            item["evidence_id"]
+            for item in evidence
+            if item["skill_id"] == skill_id
+        ]
+        if related_ids != expected_related_ids:
+            raise ValueError("可信事实与证据技能对应关系不一致。")
+
+        verified_ids = [
+            evidence_id
+            for evidence_id in related_ids
+            if evidence_by_id[evidence_id]["verified"]
+        ]
+        unverified_ids = [
+            evidence_id
+            for evidence_id in related_ids
+            if not evidence_by_id[evidence_id]["verified"]
+        ]
+        verified_levels = {
+            evidence_by_id[evidence_id]["level"]
+            for evidence_id in verified_ids
+        }
+        if verified_levels & MATCHED_EVIDENCE_LEVELS:
+            expected_status = "matched"
+        elif verified_levels & PARTIAL_EVIDENCE_LEVELS:
+            expected_status = "partial"
+        elif related_ids:
+            expected_status = "unverified"
+        else:
+            expected_status = "missing"
+        if status != expected_status:
+            raise ValueError("可信事实与证据验证状态不一致。")
+
+        trusted_facts.append({
+            "requirement_id": requirement_id,
+            "skill_id": skill_id,
+            "status": status,
+            "related_evidence_ids": list(related_ids),
+            "verified_evidence_ids": verified_ids,
+            "unverified_evidence_ids": unverified_ids,
+            "origin": "python_deterministic_match"
+        })
+
+    return trusted_facts
+
+
 def _result_error(
     message,
     stop_reason,
@@ -191,6 +301,7 @@ def _result_error(
     usage,
     trace,
     matches=None,
+    trusted_facts=None,
     fallback=None
 ):
     result = {
@@ -208,6 +319,8 @@ def _result_error(
     }
     if matches is not None:
         result["matches"] = matches
+    if trusted_facts is not None:
+        result["trusted_facts"] = trusted_facts
     if fallback is not None:
         result["fallback"] = fallback
     return result
@@ -335,6 +448,7 @@ def _build_local_match_fallback(
             })
             return None
         fallback_results[tool_name] = tool_result
+        tool_results[tool_name] = tool_result
 
     try:
         job_result = fallback_results["get_job_requirements"]
@@ -364,6 +478,19 @@ def _build_local_match_fallback(
         "status": "success"
     })
     return matches
+
+
+def _trusted_facts_from_tool_results(matches, tool_results):
+    """在本地回退成功时尽量保留同一套可信事实。"""
+    if matches is None:
+        return None
+    evidence_result = tool_results.get("get_candidate_evidence")
+    if not isinstance(evidence_result, dict):
+        return None
+    try:
+        return build_trusted_facts(matches, evidence_result.get("evidence"))
+    except ValueError:
+        return None
 
 
 def run_job_analysis_agent(
@@ -455,6 +582,9 @@ def run_job_analysis_agent(
                 used_tools,
                 trace
             )
+            fallback_trusted_facts = _trusted_facts_from_tool_results(
+                fallback_matches, tool_results
+            )
             return _result_error(
                 f"千问模型调用失败：{type(error).__name__}",
                 "model_error",
@@ -464,6 +594,7 @@ def run_job_analysis_agent(
                 usage,
                 trace,
                 matches=fallback_matches,
+                trusted_facts=fallback_trusted_facts,
                 fallback={
                     "mode": "python_deterministic_match",
                     "available": fallback_matches is not None
@@ -545,6 +676,9 @@ def run_job_analysis_agent(
                 used_tools,
                 trace
             )
+            fallback_trusted_facts = _trusted_facts_from_tool_results(
+                fallback_matches, tool_results
+            )
             return _result_error(
                 f"千问模型调用失败：{error_code}",
                 "model_error",
@@ -554,6 +688,7 @@ def run_job_analysis_agent(
                 usage,
                 trace,
                 matches=fallback_matches,
+                trusted_facts=fallback_trusted_facts,
                 fallback={
                     "mode": "python_deterministic_match",
                     "available": fallback_matches is not None
@@ -730,12 +865,33 @@ def run_job_analysis_agent(
             "action": "qwen_job_analysis",
             "status": "success"
         })
+        try:
+            trusted_facts = build_trusted_facts(
+                matches,
+                tool_results["get_candidate_evidence"]["evidence"]
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            return _result_error(
+                f"无法生成可信事实：{error}",
+                "invalid_tool_data",
+                model,
+                max_steps,
+                used_tools,
+                usage,
+                trace
+            )
         return {
             "ok": True,
             "job_id": job_id,
             "username": username,
             "matches": matches,
+            "trusted_facts": trusted_facts,
             "analysis": analysis,
+            "analysis_metadata": {
+                "origin": "model_generated",
+                "verification_status": "unverified",
+                "trusted_fact_source": "trusted_facts"
+            },
             "used_tools": used_tools,
             "model": model,
             "llm_usage": usage,
