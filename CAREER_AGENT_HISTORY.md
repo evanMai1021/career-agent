@@ -508,3 +508,28 @@ JSON_HASHES_UNCHANGED=17
 ```
 
 - 本版没有增加认证、数据库、外部 JD、真实模型、真实候选人数据或新界面。
+
+## 2026-09-23：V1.4 项目证据与讲解材料
+
+主要成果：
+
+- 整理五类项目主张到代码、测试或脱敏演示的对应关系，并列出允许介绍和不应夸大的说法。
+- 补充数据流、技术决策、一次可信事实评估修复案例、约三分钟讲解稿和五项面试问答。
+- README 增加材料入口；业务代码、API 契约、固定脱敏数据和模型能力没有变化。
+
+验证证据：
+
+```text
+Ran 168 tests
+OK
+FIXED_CASE_EXPECTED_RESULT_AGREEMENT=26/26
+EVALUATION_REPORT_EQUAL=true
+API_SAMPLE_EQUAL=true
+HTTP_SUCCESS_STATUS=200
+FORBIDDEN_FIELD_STATUS=422
+JSON_HASHES_UNCHANGED=17
+```
+
+- 在全新 Python 3.13.5 虚拟环境中安装现有依赖并运行完整测试；真实 HTTP 服务只监听 `127.0.0.1`，验收后已停止。
+- 固定案例指标仅适用于脱敏夹具和模型响应替身；自由文本虚构声明接受数仍为 3/4，不可写成模型普遍准确或已消除幻觉。
+- 本版公开项目能力证据，不证明个人独立实现或已通过闭卷讲解。
