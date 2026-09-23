@@ -85,9 +85,9 @@ class AnalysisEndpointTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
-        temp_path = Path(self.temp_dir.name)
-        self.jobs_path = temp_path / "jobs.json"
-        self.evidence_path = temp_path / "candidate_evidence.json"
+        self.temp_path = Path(self.temp_dir.name)
+        self.jobs_path = self.temp_path / "jobs.json"
+        self.evidence_path = self.temp_path / "candidate_evidence.json"
         self.jobs_data = {
             "jobs": [
                 {
@@ -218,6 +218,83 @@ class AnalysisEndpointTests(unittest.TestCase):
                     response.json(),
                     {"detail": expected_detail},
                 )
+
+    def test_rejects_blank_username_or_job_id_without_writes(self):
+        jobs_before = self.jobs_path.read_bytes()
+        evidence_before = self.evidence_path.read_bytes()
+        cases = [
+            {"username": "   ", "job_id": "demo_python"},
+            {"username": "demo_user", "job_id": " \t "},
+        ]
+
+        for payload in cases:
+            with self.subTest(payload=payload):
+                response = self.client.post("/analyses", json=payload)
+
+                self.assertEqual(response.status_code, 422)
+
+        self.assertEqual(self.jobs_path.read_bytes(), jobs_before)
+        self.assertEqual(self.evidence_path.read_bytes(), evidence_before)
+
+    def test_rejects_wrong_scope_field_types(self):
+        invalid_values = [None, True, 123, [], {}]
+        for field in ("username", "job_id"):
+            for value in invalid_values:
+                with self.subTest(field=field, value=value):
+                    payload = {
+                        "username": "demo_user",
+                        "job_id": "demo_python",
+                    }
+                    payload[field] = value
+
+                    response = self.client.post("/analyses", json=payload)
+
+                    self.assertEqual(response.status_code, 422)
+
+    def test_missing_jobs_file_returns_503_without_path_leak(self):
+        missing_jobs_path = self.temp_path / "missing_jobs.json"
+        evidence_before = self.evidence_path.read_bytes()
+        client = TestClient(
+            create_app(
+                jobs_file=missing_jobs_path,
+                evidence_file=self.evidence_path,
+            )
+        )
+
+        response = client.post(
+            "/analyses",
+            json={"username": "demo_user", "job_id": "demo_python"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"detail": "岗位数据暂不可用。"})
+        self.assertNotIn(str(missing_jobs_path), response.text)
+        self.assertFalse(missing_jobs_path.exists())
+        self.assertEqual(self.evidence_path.read_bytes(), evidence_before)
+
+    def test_missing_evidence_file_returns_503_without_path_leak(self):
+        missing_evidence_path = self.temp_path / "missing_evidence.json"
+        jobs_before = self.jobs_path.read_bytes()
+        client = TestClient(
+            create_app(
+                jobs_file=self.jobs_path,
+                evidence_file=missing_evidence_path,
+            )
+        )
+
+        response = client.post(
+            "/analyses",
+            json={"username": "demo_user", "job_id": "demo_python"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json(),
+            {"detail": "候选人证据数据暂不可用。"},
+        )
+        self.assertNotIn(str(missing_evidence_path), response.text)
+        self.assertFalse(missing_evidence_path.exists())
+        self.assertEqual(self.jobs_path.read_bytes(), jobs_before)
 
     def test_rejects_client_controlled_paths_models_and_outputs(self):
         forbidden_fields = {
