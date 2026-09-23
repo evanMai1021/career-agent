@@ -2,7 +2,7 @@
 
 CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它使用受控工具读取脱敏岗位、候选人证据和学习进度，由 Python 计算并核对匹配结果，再让千问生成明确标为未验证内容的结构化建议。
 
-最新版本：`V1.2`
+最新版本：`V1.3`
 
 ## 文档导航
 
@@ -31,6 +31,8 @@ CareerAgent 是一个面向求职学习场景的 Python Agent 项目。它使用
 - V1.1 新增 19 个可运行的脱敏离线评估案例、10 组固定夹具和批量评估运行器。
 - V1.1.1 将离线评估扩至 26 个案例：按配置的禁止声明检查模型生成的自由文本，单案例异常记为失败后继续运行，并增加恶意 JD 与危险服从行为的配对案例。
 - V1.2 新增 `trusted_facts`：只保存 Python 确定的岗位要求 ID、技能 ID、匹配状态及已验证／未验证证据 ID，不接收模型生成的解释、任务或问题；生成时会重新核对证据技能、能力层级和四种状态。
+- V1.3 新增本地 FastAPI 只读服务，提供健康检查、岗位要求查询和默认离线分析接口；客户端不能指定数据文件、模型或输出位置。
+- 离线分析接口直接复用 Python 确定性匹配和 V1.2 `trusted_facts`，并明确返回 `analysis_mode=offline_deterministic` 与 `model_generated=false`。
 - 模型分析通过 `analysis_metadata` 标记为 `model_generated` 和 `unverified`；模型不可用时，本地回退仍可保留可信事实，但不会伪造模型分析。
 - 评估命令支持筛选单个案例或类别，并可将通过格式隐私扫描的报告新建为 JSON；已有文件和项目数据不会被覆盖。
 - 评估指标分别计算执行成功率、结构通过率、来源准确率、匹配一致性、结构化及配置短语的自由文本虚构接受率、可信事实泄漏率和安全处理率，并同时公开分子、分母、适用案例数和比例。
@@ -73,6 +75,7 @@ LeetCode 建议的数据来源示例：
 - Python 3.13
 - Windows / PowerShell
 - 千问 AI 平台 OpenAI 兼容接口
+- FastAPI 与 Uvicorn 本地只读 API
 
 ## 安装
 
@@ -80,6 +83,8 @@ LeetCode 建议的数据来源示例：
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
+
+如果只体验 V1.3 本地只读 API，可以跳过下面的 `.env` 和千问密钥配置，直接进入“本地只读 API”章节。
 
 复制 `.env.example` 为 `.env`，然后只在本地填写：
 
@@ -90,7 +95,7 @@ CAREER_AGENT_MODE=llm
 
 `.env` 已被 `.gitignore` 忽略。请勿把真实密钥写入代码、截图或提交记录。
 
-## 运行
+## 命令行运行
 
 ```powershell
 .venv\Scripts\python.exe main.py
@@ -130,6 +135,36 @@ CONFIRM  # 精确输入此确认词才会保存
 ```ini
 CAREER_AGENT_MODE=rule
 ```
+
+## 本地只读 API
+
+V1.3 API 默认读取仓库内的脱敏示例数据，离线分析不调用真实模型，不需要 API Key，也不会写入项目文件。
+
+在第一个 PowerShell 终端启动仅监听本机的服务：
+
+```powershell
+.venv\Scripts\python.exe -m uvicorn api_app:app --host 127.0.0.1 --port 8000
+```
+
+看到 `Uvicorn running on http://127.0.0.1:8000` 后，在第二个 PowerShell 终端运行：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/health"
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/jobs/demo_ai_agent_intern/requirements"
+
+$analysisBody = @{
+    username = "test_user"
+    job_id = "demo_ai_agent_intern"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Uri "http://127.0.0.1:8000/analyses" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $analysisBody
+```
+
+分析结果中的三个状态应依次为 `matched`、`matched`、`unverified`。完整脱敏响应见 [`examples/careeragent_v1_3_api_analysis_output.json`](examples/careeragent_v1_3_api_analysis_output.json)。验证完成后在第一个终端按 `Ctrl+C` 停止服务。
 
 ## 测试
 
@@ -177,6 +212,8 @@ V1.2 的完整测试为 153 项，全部通过。26/26 个固定案例的观察�
 
 V1.2 仍只使用固定脱敏案例和模型响应替身，没有调用真实千问。正式报告见 [`examples/careeragent_v1_2_evaluation_report.json`](examples/careeragent_v1_2_evaluation_report.json)；报告中的局限说明属于结果的一部分。
 
+V1.3 新增 11 项本地 API 契约测试，完整套件现为 164 项。测试覆盖三个接口、默认项目数据复现、未知岗位或候选人、损坏数据、客户端路径／模型／输出字段拒绝、查询参数拒绝和文件不变性。Uvicorn 真实 HTTP 验收仅监听 `127.0.0.1`；三个正常请求分别返回 200，越权文件字段返回 422，验收后服务已关闭。全新 Python 3.13.5 虚拟环境按上述安装命令复现成功，并再次通过 164 项测试；实际安装 FastAPI 0.141.1、Pydantic 2.13.5、Uvicorn 0.53.0、HTTPX 0.28.1 和 OpenAI SDK 3.19.0。以上分析使用 Python 确定性规则，没有调用真实模型。
+
 V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`，生成的三类建议均携带可核对的 `sources`，并通过 Python 本地来源校验。该次运行没有执行写入工具。
 
 脱敏运行证据：
@@ -186,6 +223,7 @@ V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`
 - [`examples/careeragent_v0_9b_job_match_output.json`](examples/careeragent_v0_9b_job_match_output.json)：两个岗位/证据只读工具与 Python 确定性匹配结果；不调用真实模型。
 - [`examples/careeragent_v1_0_job_analysis_output.json`](examples/careeragent_v1_0_job_analysis_output.json)：三个只读工具、Python 权威匹配和结构化岗位分析；明确标注为离线模型替身示例。
 - [`examples/careeragent_v1_2_evaluation_report.json`](examples/careeragent_v1_2_evaluation_report.json)：26 个固定案例的脱敏离线报告，包含案例分类、完整计数指标、复现命令和局限说明。
+- [`examples/careeragent_v1_3_api_analysis_output.json`](examples/careeragent_v1_3_api_analysis_output.json)：本地 API 默认离线分析的完整脱敏响应，与自动化测试实际结果逐字段核对。
 
 受控写入脱敏演示截图（离线测试数据与模型响应替身，不调用真实 API，也不修改真实学习数据）：
 
@@ -200,7 +238,8 @@ V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`
 ├─ advice：千问调用只读工具 → 生成建议和sources → Python核对来源
 ├─ job：千问调用三个只读工具 → Python计算匹配与可信事实 → 模型生成未验证解释 → Python核对状态和来源
 ├─ update：千问生成参数提案 → Python验证 → 用户确认 → 执行或取消
-└─ evaluation：加载脱敏案例和夹具 → 临时数据 → 模型替身运行Agent → 汇总指标
+├─ evaluation：加载脱敏案例和夹具 → 临时数据 → 模型替身运行Agent → 汇总指标
+└─ local API：固定服务端文件 → Python确定性匹配 → trusted_facts → 只读HTTP响应
 ```
 
 ## 项目边界
@@ -209,4 +248,5 @@ V0.8 已完成一次真实只读验收：千问实际调用 `get_study_progress`
 - `requested_tools` 表示模型提出调用，`used_tools` 表示 Python 已实际执行；取消时后者为空，确认执行后才包含写入工具。
 - 当前没有 RAG、多 Agent、网页前端、自动岗位搜索或自动投递。
 - `used_tools` 记录实际执行过的工具；`trace` 同时记录模型决策和程序动作。
+- V1.3 API 只提供本地脱敏数据的只读访问和确定性分析，不包含身份系统、云部署或真实候选人数据。
 - V1.2 安全与评估结果来自固定脱敏数据和模型替身，不冒充真实模型红队测试结论；`0/4` 可信事实泄漏也不等于完整幻觉治理。

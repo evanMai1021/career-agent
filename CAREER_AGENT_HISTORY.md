@@ -174,7 +174,7 @@ OK
 
 ## 2026-09-14：本地 Git 基线
 
-- 在 `D:\Projects\agent_project` 初始化本地 Git 仓库，默认分支为 `main`。
+- 在项目根目录初始化本地 Git 仓库，默认分支为 `main`。
 - 使用个人全局 Git 身份创建首次提交：`ce8cba2 feat: add CareerAgent V0.5`。
 - 首次提交包含 16 个公开项目文件；`.env`、虚拟环境、IDE 配置、私人学习记录和本地协作文档均由 `.gitignore` 排除。
 - 提交前使用项目虚拟环境运行 26 项离线测试，结果为 `OK`。
@@ -460,3 +460,31 @@ TRUSTED_FACT_FREE_TEXT_LEAKAGE=0/4
 
 - 以上结果来自固定脱敏数据和模型响应替身，没有调用真实千问或产生模型费用。
 - `26/26` 不能表述为任意 JD 准确率；`0/4` 不能表述为模型停止幻觉或已经完成全部事实核查。
+
+## 2026-09-23：V1.3 FastAPI 本地只读服务
+
+主要成果：
+
+- 新增 FastAPI 应用，提供健康检查、岗位要求查询和离线确定性分析三个 HTTP 接口。
+- 数据文件路径只由服务端固定；请求体严格限制为用户名与岗位 ID，额外的路径、模型和输出字段会被拒绝。
+- 离线分析直接复用现有 Python 匹配矩阵和 V1.2 `trusted_facts`，不调用真实模型，也不执行写入。
+- 响应明确区分离线确定性分析与模型生成内容，并保存一份由自动化测试逐字段核对的脱敏 API 示例。
+- README 增加从安装、启动 Uvicorn、发送 PowerShell 请求到停止服务的复现命令。
+
+验证证据：
+
+```text
+Ran 164 tests
+OK
+
+API_TESTS=11/11
+HTTP_SUCCESS_STATUS=200
+FORBIDDEN_FIELD_STATUS=422
+ANALYSIS_STATUSES=matched,matched,unverified
+MODEL_GENERATED=false
+```
+
+- 真实 HTTP 验收仅监听 `127.0.0.1`，结束后端口与服务进程均已关闭。
+- 测试与验收没有调用真实模型；17 份项目与示例 JSON 在测试前后保持不变。
+- 全新 Python 3.13.5 虚拟环境按 `requirements.txt` 安装成功并再次通过 164 项测试；记录的主要依赖版本为 FastAPI 0.141.1、Pydantic 2.13.5、Uvicorn 0.53.0、HTTPX 0.28.1 和 OpenAI SDK 3.19.0。
+- 当前 API 只覆盖固定脱敏数据和确定性分析，不包含身份系统、数据库、网页前端、云部署、任意 JD 或真实候选人数据。
