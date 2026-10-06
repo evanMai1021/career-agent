@@ -10,6 +10,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from demo_cases import list_demo_cases, run_demo_case
+from demo_profile import load_demo_profile
+
 from job_analysis_agent import build_trusted_facts
 from job_matching import (
     get_candidate_evidence,
@@ -23,6 +26,8 @@ DEFAULT_EVIDENCE_FILE = (
     Path(__file__).resolve().parent / "candidate_evidence.json"
 )
 DEMO_PAGE_FILE = Path(__file__).resolve().parent / "demo.html"
+DEFAULT_USERS_FILE = Path(__file__).resolve().parent / "users.json"
+DEFAULT_PROGRESS_FILE = Path(__file__).resolve().parent / "study_progress.json"
 
 
 class HealthResponse(BaseModel):
@@ -62,6 +67,14 @@ class MatchResponse(JobRequirementResponse):
     related_evidence_ids: list[str]
 
 
+class DemoCaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    case_id: Literal[
+        "verified_project", "verified_practice", "unverified_claim",
+        "no_evidence", "invalid_evidence",
+    ]
+
+
 class TrustedFactResponse(BaseModel):
     requirement_id: str
     skill_id: str
@@ -86,6 +99,8 @@ def create_app(
     *,
     jobs_file: Path | None = None,
     evidence_file: Path | None = None,
+    users_file: Path | None = None,
+    progress_file: Path | None = None,
 ) -> FastAPI:
     """创建本地 API；测试可从 Python 注入文件，HTTP 请求不可指定。"""
     selected_jobs_file = (
@@ -96,7 +111,9 @@ def create_app(
         if evidence_file is not None
         else DEFAULT_EVIDENCE_FILE
     )
-    api = FastAPI(title="CareerAgent Local API", version="1.5.1")
+    selected_users_file = Path(users_file) if users_file is not None else DEFAULT_USERS_FILE
+    selected_progress_file = Path(progress_file) if progress_file is not None else DEFAULT_PROGRESS_FILE
+    api = FastAPI(title="CareerAgent Local API", version="1.6.0")
 
     @api.get("/health", response_model=HealthResponse)
     def get_health() -> HealthResponse:
@@ -104,7 +121,7 @@ def create_app(
 
     @api.get("/demo", response_class=HTMLResponse)
     def read_demo(request: Request) -> HTMLResponse:
-        """展示固定脱敏案例；页面本身不读取岗位或候选人数据。"""
+        """展示固定模拟案例；页面本身不读取岗位或候选人数据。"""
         if request.query_params:
             raise HTTPException(status_code=422, detail="不接受查询参数。")
         try:
@@ -119,6 +136,34 @@ def create_app(
                 "Referrer-Policy": "no-referrer",
             },
         )
+
+    @api.get("/demo/cases", response_model=list[dict])
+    def read_demo_cases(request: Request) -> list[dict]:
+        if request.query_params:
+            raise HTTPException(status_code=422, detail="不接受查询参数。")
+        return list_demo_cases()
+
+    @api.get("/demo/profile", response_model=dict)
+    def read_demo_profile(request: Request) -> dict:
+        if request.query_params:
+            raise HTTPException(status_code=422, detail="不接受查询参数。")
+        try:
+            return load_demo_profile(
+                users_file=selected_users_file,
+                progress_file=selected_progress_file,
+                evidence_file=selected_evidence_file,
+            )
+        except (OSError, UnicodeError, KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=503, detail="历史用户资料暂不可用。") from None
+
+    @api.post("/demo/analyses", response_model=dict)
+    def analyse_demo_case(payload: DemoCaseRequest, request: Request) -> dict:
+        if request.query_params:
+            raise HTTPException(status_code=422, detail="不接受查询参数。")
+        try:
+            return run_demo_case(payload.case_id)
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=503, detail="演示分析暂不可用。") from None
 
     @api.get(
         "/jobs/{job_id}/requirements",

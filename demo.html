@@ -58,6 +58,15 @@
     .legend .missing { border-top-color: #b46b6b; }
     .legend strong { display: block; }
     .notice { border-left: 4px solid #e7a745; padding: 14px 18px; background: #fff9ec; border-radius: 7px; color: #5d4e32; }
+    select { max-width: 100%; padding: 11px; border: 1px solid #9bb9bc; border-radius: 9px; font: inherit; background: #fff; }
+    .decision { padding: 12px; background: #f0f6f6; border-radius: 9px; line-height: 1.6; }
+    .outcome { font-size: 1.05rem; font-weight: 750; }
+    .pass { color: #116445; }
+    .fail { color: #985252; }
+    .input-item { border-top: 1px solid #dbe7e8; padding-top: 12px; margin-top: 12px; }
+    .view-nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0; }
+    .view-nav button[aria-pressed="false"] { color: #145b5d; background: #e6f2f0; }
+    ol { line-height: 1.8; padding-left: 24px; }
     [hidden] { display: none !important; }
     @media (max-width: 900px) { .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 720px) { main { padding: 18px 14px 48px; } .hero { padding: 26px 22px; } .flow, .grid, .legend { grid-template-columns: 1fr; } }
@@ -67,25 +76,42 @@
   <main>
     <header class="hero">
       <div class="eyebrow">CareerAgent / Local demo</div>
-      <h1>一眼看清岗位匹配的依据</h1>
-      <p class="lead">用固定脱敏示例演示：岗位要求如何与候选人证据关联，以及哪些结论可以进入可信事实。</p>
+      <h1>看清用户资料与岗位匹配依据</h1>
+      <p class="lead">查看已有历史用户资料，或切换五个模拟输入，对照证据变化怎样影响实际判定。</p>
       <div class="chips"><span class="chip">本机脱敏演示</span><span class="chip">无需 API Key</span><span class="chip">不修改数据</span></div>
     </header>
+
+    <nav class="view-nav" aria-label="展示内容">
+      <button id="show-profile" type="button" aria-pressed="false">历史用户完整资料</button>
+      <button id="show-cases" type="button" aria-pressed="true">模拟案例对照</button>
+    </nav>
+
+    <div id="case-view">
 
     <section aria-labelledby="flow-title">
       <h2 id="flow-title">分析如何产生</h2>
       <div class="flow">
-        <div class="step"><small>01 / 输入</small><h3>固定岗位与证据</h3><p>只读取仓库中的脱敏示例，不接受浏览器指定文件路径。</p></div>
-        <div class="step"><small>02 / 匹配</small><h3>Python 确定状态</h3><p>按相同技能 ID、证据层级和验证标记计算四种状态。</p></div>
-        <div class="step"><small>03 / 输出</small><h3>保留可核对来源</h3><p>将要求、状态和证据 ID 放入可信事实；本页不生成模型建议。</p></div>
+        <div class="step"><small>01 / 输入</small><h3>展开岗位与证据</h3><p>查看要求、证据描述、来源、层级和验证标记。</p></div>
+        <div class="step"><small>02 / 判定</small><h3>实际运行 Python 规则</h3><p>先校验输入，再匹配技能与证据；非法输入会被拒绝。</p></div>
+        <div class="step"><small>03 / 核对</small><h3>分别判断执行与结果</h3><p>缺少证据仍可完成分析；正确拒绝非法输入也可通过案例核对。</p></div>
       </div>
     </section>
 
     <section class="panel" aria-labelledby="run-title">
-      <h2 id="run-title">运行一次真实的本机离线分析</h2>
-      <p class="muted">示例范围：<code>test_user</code> · <code>demo_ai_agent_intern</code>。点击后调用现有只读分析接口。</p>
-      <div class="action-row"><button id="run" type="button">运行脱敏分析</button><p id="status" class="status" role="status" aria-live="polite">等待运行。</p></div>
+      <h2 id="run-title">选择输入，运行并核对</h2>
+      <p class="muted">所有案例均为人工构造，不代表真实候选人的能力或真实招聘结论。</p>
+      <label for="case-select">对照案例：</label>
+      <select id="case-select" disabled><option>正在加载案例…</option></select>
+      <p id="expected" class="muted"></p>
+      <div id="inputs" class="grid"></div>
+      <div class="action-row" style="margin-top:20px"><button id="run" type="button" disabled>运行并核对案例</button><p id="status" class="status" role="status" aria-live="polite">正在加载模拟案例…</p></div>
       <noscript><p class="notice">此演示页需要启用 JavaScript。也可按 README 的本地接口示例查看分析结果。</p></noscript>
+    </section>
+
+    <section id="run-outcome" class="panel" hidden aria-labelledby="outcome-title">
+      <h2 id="outcome-title">这次执行是否符合预期？</h2>
+      <p id="execution" class="outcome"></p><p id="verification" class="outcome"></p>
+      <p id="comparison" class="muted"></p><ol id="steps"></ol>
     </section>
 
     <section id="result" hidden aria-labelledby="result-title">
@@ -104,16 +130,41 @@
       </div>
     </section>
 
-    <section class="notice"><strong>边界说明：</strong>“已验证”是输入数据中的标记，并非程序自动证明现实能力。此页只针对固定脱敏案例；没有身份验证，不可用于真实候选人数据或公网。</section>
+    <section class="notice"><strong>边界说明：</strong>案例核对只检查这五个预设输入，不能证明任意岗位分析准确。“已验证”是输入标记，程序没有核实现实能力；本页没有身份验证，仅用于本机模拟演示。历史 API 示例仍可按 README 单独运行。</section>
+    </div>
+
+    <section id="profile-view" hidden aria-labelledby="profile-title">
+      <h2 id="profile-title">用户完整资料 · 历史脱敏记录</h2>
+      <p class="notice">这里查看的是已有 <code>test_user</code> 资料，不是模拟案例中的候选人。它包含历史记录，不代表当前真实个人能力；五个案例不会使用这份资料进行分析。</p>
+      <p id="profile-status" role="status" aria-live="polite"></p>
+      <button id="profile-retry" type="button" hidden>重新读取历史资料</button>
+      <div id="profile-content" hidden>
+        <section class="panel"><h3>基本资料与来源</h3><div id="profile-basic"></div></section>
+        <section><h3>全部能力证据 · 按记录的验证状态分组</h3><p class="muted">显示全部证据，不只筛选当前岗位相关项。分组说明证据状态，不自动鉴定用户是否掌握。</p><div id="profile-groups" class="flow"></div></section>
+        <section class="panel"><h3>学习进度 · 不等于已验证能力</h3><div id="profile-learning"></div></section>
+        <section class="panel"><h3>全部复习任务</h3><div id="profile-tasks"></div></section>
+      </div>
+    </section>
   </main>
   <script>
-    const DEMO_REQUEST = {"username":"test_user","job_id":"demo_ai_agent_intern"};
     const labels = {matched: "已匹配", partial: "部分匹配", unverified: "待核实", missing: "缺少证据"};
     const categoryLabels = {required: "必需", preferred: "加分"};
+    const levelLabels = {learning: "学习", practice: "练习", project: "项目", production: "生产"};
     const order = ["matched", "partial", "unverified", "missing"];
     const runButton = document.querySelector("#run");
+    const caseSelect = document.querySelector("#case-select");
     const statusLine = document.querySelector("#status");
     const result = document.querySelector("#result");
+    const outcome = document.querySelector("#run-outcome");
+    const profileButton = document.querySelector("#show-profile");
+    const casesButton = document.querySelector("#show-cases");
+    const caseView = document.querySelector("#case-view");
+    const profileView = document.querySelector("#profile-view");
+    const profileContent = document.querySelector("#profile-content");
+    const profileStatus = document.querySelector("#profile-status");
+    const profileRetry = document.querySelector("#profile-retry");
+    let cases = [];
+    class DemoRequestError extends Error {}
 
     function textNode(parent, tag, className, value) {
       const node = document.createElement(tag);
@@ -127,7 +178,95 @@
       return Array.isArray(values) && values.length ? values.join("、") : "无";
     }
 
-    function render(data) {
+    function sameData(left, right) {
+      if (left === right) return true;
+      if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+      if (Array.isArray(left) !== Array.isArray(right)) return false;
+      const keys = Object.keys(left);
+      return keys.length === Object.keys(right).length
+        && keys.every(key => Object.hasOwn(right, key) && sameData(left[key], right[key]));
+    }
+
+    function nonemptyText(value) {
+      return typeof value === "string" && value.trim().length > 0;
+    }
+
+    function validCase(item) {
+      return item && item.data_kind === "synthetic_demo" && nonemptyText(item.case_id)
+        && nonemptyText(item.label) && item.job && nonemptyText(item.job.title)
+        && nonemptyText(item.job.job_id) && Array.isArray(item.job.requirements)
+        && item.job.requirements.length > 0 && item.job.requirements.every(requirement =>
+          requirement && ["requirement_id", "skill_id", "description"].every(key => nonemptyText(requirement[key]))
+          && Object.hasOwn(categoryLabels, requirement.category))
+        && item.candidate && Array.isArray(item.candidate.evidence)
+        && item.candidate.evidence.every(evidence => evidence
+          && ["evidence_id", "skill_id", "description", "source"].every(key => nonemptyText(evidence[key]))
+          && Object.hasOwn(levelLabels, evidence.level)
+          && (typeof evidence.verified === "boolean" || (item.case_id === "invalid_evidence" && evidence.verified === "true")))
+        && item.expected && ["completed", "rejected"].includes(item.expected.execution_status)
+        && Array.isArray(item.expected.states) && item.expected.states.every(state => state
+          && nonemptyText(state.requirement_id) && order.includes(state.status))
+        && Array.isArray(item.expected.matches) && Array.isArray(item.expected.trusted_facts);
+    }
+
+    function validateReport(report, selected) {
+      if (!report || !sameData(report.case, selected)
+          || !report.verification || typeof report.verification.passed !== "boolean"
+          || !Array.isArray(report.verification.actual_states)
+          || !Array.isArray(report.steps) || !report.steps.every(nonemptyText)
+          || !Array.isArray(report.decisions)
+          || !["completed", "rejected"].includes(report.execution_status)) throw new Error("报告格式异常");
+      let matches = [], facts = [];
+      if (report.execution_status === "completed") {
+        const data = report.analysis;
+        if (!data || data.analysis_mode !== "offline_deterministic" || data.model_generated !== false
+            || data.username !== selected.candidate.username || data.job_id !== selected.job.job_id
+            || !Array.isArray(data.matches) || !Array.isArray(data.trusted_facts)
+            || data.matches.some(match => !match || !order.includes(match.status)
+              || !Array.isArray(match.related_evidence_ids)
+              || !report.decisions.some(decision => decision.requirement_id === match.requirement_id && nonemptyText(decision.reason)))) throw new Error("分析格式异常");
+        matches = data.matches;
+        facts = data.trusted_facts;
+      } else if (report.analysis !== null || report.decisions.length || !nonemptyText(report.error)) {
+        throw new Error("拒绝报告不应包含分析结果");
+      }
+      const states = matches.map(match => ({requirement_id: match.requirement_id, status: match.status}));
+      if (!sameData(states, report.verification.actual_states)) throw new Error("实际状态不一致");
+      // 只有完全符合运行前预设的报告才能声称通过；不依赖报告重新提供的预设。
+      if (report.verification.passed && (report.execution_status !== selected.expected.execution_status
+          || !sameData(states, selected.expected.states) || !sameData(matches, selected.expected.matches)
+          || !sameData(facts, selected.expected.trusted_facts))) throw new Error("核对通过声明与结果不一致");
+    }
+
+    function preview(selected) {
+      const inputs = document.querySelector("#inputs");
+      inputs.replaceChildren();
+      const job = textNode(inputs, "article", "panel", "");
+      textNode(job, "h3", "", "岗位输入 · 模拟岗位");
+      textNode(job, "p", "", selected.job.title);
+      for (const requirement of selected.job.requirements) {
+        textNode(job, "p", "", requirement.description);
+        textNode(job, "p", "idline", `技能 ${requirement.skill_id} · ${categoryLabels[requirement.category]} · 要求 ${requirement.requirement_id}`);
+      }
+      const candidate = textNode(inputs, "article", "panel", "");
+      textNode(candidate, "h3", "", "候选人输入 · 模拟证据");
+      if (!selected.candidate.evidence.length) textNode(candidate, "p", "", "没有提供相关证据；这不等于现实中没有这项能力。");
+      for (const item of selected.candidate.evidence) {
+        const block = textNode(candidate, "div", "input-item", "");
+        textNode(block, "p", "", item.description);
+        const verification = typeof item.verified === "boolean"
+          ? (item.verified ? "已验证标记" : "尚未核实")
+          : `非法值 ${JSON.stringify(item.verified)}（字符串，不是布尔值）`;
+        textNode(block, "p", "idline", `层级：${levelLabels[item.level]} · ${verification} · 技能 ${item.skill_id}`);
+        textNode(block, "p", "idline", `来源：${item.source}`);
+        textNode(block, "p", "idline", `证据 ID：${item.evidence_id}`);
+      }
+      document.querySelector("#expected").textContent = selected.expected.execution_status === "rejected"
+        ? "运行前预设：输入应被拒绝，不能产生匹配或可信事实。"
+        : `运行前预设：分析应完成，匹配应为${selected.expected.states.map(item => labels[item.status]).join("、")}。`;
+    }
+
+    function render(data, decisions) {
       document.querySelector("#job-title").textContent = `${data.title} · ${data.job_id} · 离线确定性分析（未调用模型）`;
       const counts = document.querySelector("#counts");
       counts.replaceChildren();
@@ -145,6 +284,7 @@
         textNode(card, "h3", "", match.description);
         textNode(card, "p", "idline", `要求 ${match.requirement_id} · 技能 ${match.skill_id} · ${categoryLabels[match.category] || "未知类别"} · 优先级 ${match.priority}`);
         textNode(card, "p", "idline", `关联证据 ID：${ids(match.related_evidence_ids)}`);
+        textNode(card, "p", "decision", decisions.find(item => item.requirement_id === match.requirement_id).reason);
         matches.append(card);
       }
 
@@ -162,23 +302,12 @@
       result.hidden = false;
     }
 
-    runButton.addEventListener("click", async () => {
-      if (runButton.disabled) return;
-      runButton.disabled = true;
-      runButton.textContent = "分析中…";
-      result.hidden = true;
-      result.setAttribute("aria-busy", "true");
-      statusLine.textContent = "正在读取本机脱敏数据并计算匹配…";
+    async function requestJSON(url, options = {}) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
       let failureMessage = "无法连接本机服务，请确认服务已启动后重试。";
       try {
-        const response = await fetch("/analyses", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(DEMO_REQUEST),
-          signal: controller.signal,
-        });
+        const response = await fetch(url, {...options, signal: controller.signal});
         if (!response.ok) {
           const messages = {
             404: "脱敏示例不存在，请检查仓库中的示例数据后重试。",
@@ -189,19 +318,195 @@
           throw new Error("分析请求失败");
         }
         failureMessage = "结果格式异常，请确认页面与本机服务版本一致后重试。";
-        render(await response.json());
-        statusLine.textContent = "完成：结果由本机 Python 规则生成，未调用模型。";
+        return await response.json();
       } catch (_) {
-        statusLine.textContent = controller.signal.aborted
+        throw new DemoRequestError(controller.signal.aborted
           ? "分析超过 10 秒，已停止等待；请检查本机服务后重试。"
-          : failureMessage;
+          : failureMessage);
       } finally {
         clearTimeout(timeout);
+      }
+    }
+
+    async function loadCases() {
+      runButton.disabled = true;
+      caseSelect.disabled = true;
+      try {
+        const loaded = await requestJSON("/demo/cases");
+        if (!Array.isArray(loaded) || !loaded.length || !loaded.every(validCase)
+            || new Set(loaded.map(item => item.case_id)).size !== loaded.length) throw new Error("案例目录异常");
+        preview(loaded[0]);
+        cases = loaded;
+        caseSelect.replaceChildren();
+        for (const item of cases) {
+          const option = textNode(caseSelect, "option", "", item.label);
+          option.value = item.case_id;
+        }
+        caseSelect.value = cases[0].case_id;
+        statusLine.textContent = "输入已加载。选择案例后点击运行，查看实际结果。";
+      } catch (error) {
+        statusLine.textContent = error instanceof DemoRequestError
+          ? error.message : "结果格式异常，请确认页面与本机服务版本一致后重试。";
+      } finally {
+        caseSelect.disabled = !cases.length;
+        runButton.disabled = false;
+        runButton.textContent = cases.length ? "运行并核对案例" : "重新加载案例";
+      }
+    }
+
+    function renderProfile(profile) {
+      if (profile.data_kind !== "historical_demo" || profile.username !== "test_user") throw new Error("资料范围异常");
+      const expectedGroups = {verified_application: [], verified_learning: [], unverified: []};
+      if (!Array.isArray(profile.evidence)) throw new Error("资料证据异常");
+      for (const item of profile.evidence) {
+        if (!item || typeof item.verified !== "boolean" || !Object.hasOwn(levelLabels, item.level)
+            || !["evidence_id", "skill_id", "description", "source"].every(key => nonemptyText(item[key]))) throw new Error("资料证据异常");
+        const key = !item.verified ? "unverified"
+          : ["project", "production"].includes(item.level) ? "verified_application" : "verified_learning";
+        expectedGroups[key].push(item.evidence_id);
+      }
+      if (!sameData(expectedGroups, profile.evidence_groups)) throw new Error("资料分组不完整");
+      const basic = document.querySelector("#profile-basic");
+      basic.replaceChildren();
+      textNode(basic, "p", "", `用户名：${profile.username} · 目标岗位：${profile.target_role}`);
+      textNode(basic, "p", "idline", `读取来源：${profile.source_files.join("、")}`);
+      textNode(basic, "p", "muted", profile.note);
+      const groups = document.querySelector("#profile-groups");
+      groups.replaceChildren();
+      const titles = {
+        verified_application: "已验证项目／生产级证据",
+        verified_learning: "已验证学习／练习证据",
+        unverified: "待核实描述",
+      };
+      const skillLabels = {python: "Python", agent_tool_calling: "Agent 工具调用", fastapi: "FastAPI"};
+      for (const [key, title] of Object.entries(titles)) {
+        const card = textNode(groups, "article", "panel", "");
+        const records = profile.evidence.filter(item => profile.evidence_groups[key].includes(item.evidence_id));
+        textNode(card, "h3", "", `${title} · ${records.length} 条`);
+        if (!records.length) textNode(card, "p", "muted", "暂无这类记录，不代表用户没有这项能力。");
+        for (const item of records) {
+          const record = textNode(card, "div", "input-item", "");
+          textNode(record, "strong", "", `${skillLabels[item.skill_id] || item.skill_id} · ${levelLabels[item.level]}`);
+          textNode(record, "p", "", item.description);
+          textNode(record, "p", "idline", `来源：${item.source}`);
+          textNode(record, "p", "idline", `验证标记：${item.verified ? "true · 已验证记录" : "false · 待核实"} · 证据 ID：${item.evidence_id}`);
+        }
+      }
+      const learning = document.querySelector("#profile-learning");
+      learning.replaceChildren();
+      const progress = profile.study_progress;
+      for (const [key, title] of Object.entries({python_progress: "Python 学习", leetcode_topic: "算法学习专题", agent_progress: "Agent 学习／项目记录"})) {
+        textNode(learning, "strong", "", title);
+        textNode(learning, "p", "", progress[key]);
+      }
+      const tasks = document.querySelector("#profile-tasks");
+      tasks.replaceChildren();
+      if (!progress.review_tasks.length) textNode(tasks, "p", "muted", "当前没有复习任务记录。");
+      for (const task of progress.review_tasks) {
+        const row = textNode(tasks, "article", "input-item", "");
+        textNode(row, "strong", "", `${task.problem_id} · ${task.title}`);
+        textNode(row, "p", "idline", `专题：${task.topics.join("、")} · 状态：${task.status}`);
+      }
+    }
+
+    async function loadProfile() {
+      if (profileButton.disabled) return;
+      profileButton.disabled = true;
+      profileRetry.disabled = true;
+      profileContent.hidden = true;
+      profileRetry.hidden = true;
+      profileStatus.textContent = "正在读取历史用户资料…";
+      try {
+        renderProfile(await requestJSON("/demo/profile"));
+        profileContent.hidden = false;
+        profileStatus.textContent = "已读取完整历史资料。学习记录与能力证据分别展示，未修改文件。";
+      } catch (error) {
+        profileStatus.textContent = error instanceof DemoRequestError
+          ? error.message : "历史用户资料格式异常，请检查本机演示文件后重试。";
+        profileRetry.hidden = false;
+      } finally {
+        profileButton.disabled = false;
+        profileRetry.disabled = false;
+      }
+    }
+
+    profileButton.addEventListener("click", () => {
+      caseView.hidden = true;
+      profileView.hidden = false;
+      profileButton.setAttribute("aria-pressed", "true");
+      casesButton.setAttribute("aria-pressed", "false");
+      return loadProfile();
+    });
+    casesButton.addEventListener("click", () => {
+      caseView.hidden = false;
+      profileView.hidden = true;
+      profileButton.setAttribute("aria-pressed", "false");
+      casesButton.setAttribute("aria-pressed", "true");
+    });
+    profileRetry.addEventListener("click", loadProfile);
+
+    caseSelect.addEventListener("change", () => {
+      result.hidden = true;
+      outcome.hidden = true;
+      preview(cases.find(item => item.case_id === caseSelect.value));
+      statusLine.textContent = "输入已切换，请运行以获取新结果。";
+    });
+
+    runButton.addEventListener("click", async () => {
+      if (runButton.disabled) return;
+      if (!cases.length) return loadCases();
+      runButton.disabled = true;
+      caseSelect.disabled = true;
+      runButton.textContent = "分析中…";
+      result.hidden = true;
+      outcome.hidden = true;
+      result.setAttribute("aria-busy", "true");
+      statusLine.textContent = "正在校验输入、计算匹配并核对预设…";
+      try {
+        const report = await requestJSON("/demo/analyses", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({case_id: caseSelect.value}),
+        });
+        validateReport(report, cases.find(item => item.case_id === caseSelect.value));
+        preview(report.case);
+        if (report.execution_status === "completed") {
+          if (report.analysis.analysis_mode !== "offline_deterministic" || report.analysis.model_generated !== false) throw new Error("结果格式异常，请确认页面与本机服务版本一致后重试。");
+          render(report.analysis, report.decisions);
+        }
+        document.querySelector("#execution").textContent = report.execution_status === "completed"
+          ? "分析执行：完成。匹配不足并不表示程序执行失败。"
+          : `分析执行：输入被拒绝。${report.error}`;
+        const verification = document.querySelector("#verification");
+        verification.textContent = report.verification.passed
+          ? "案例核对：通过，实际结果符合预设。"
+          : "案例核对：未通过，实际结果与预设不一致。";
+        verification.className = `outcome ${report.verification.passed ? "pass" : "fail"}`;
+        const expected = report.case.expected;
+        const executionLabels = {completed: "完成", rejected: "拒绝"};
+        document.querySelector("#comparison").textContent = `预期执行：${executionLabels[expected.execution_status]} / 实际执行：${executionLabels[report.execution_status]}；预期匹配：${expected.states.map(item => labels[item.status]).join("、") || "不应产生"} / 实际匹配：${report.verification.actual_states.map(item => labels[item.status]).join("、") || "未产生"}。仅核对固定模拟案例，不是候选人评分。`;
+        const steps = document.querySelector("#steps");
+        steps.replaceChildren();
+        for (const step of report.steps) textNode(steps, "li", "", step);
+        outcome.hidden = false;
+        statusLine.textContent = "本次运行结束，未调用模型；可切换输入进行对照。";
+      } catch (error) {
+        result.hidden = true;
+        document.querySelector("#execution").textContent = "分析执行：失败，尚未得到完整结果。";
+        document.querySelector("#verification").textContent = "案例核对：未完成。";
+        document.querySelector("#verification").className = "outcome fail";
+        document.querySelector("#comparison").textContent = "";
+        document.querySelector("#steps").replaceChildren();
+        outcome.hidden = false;
+        statusLine.textContent = error instanceof DemoRequestError
+          ? error.message : "结果格式异常，请确认页面与本机服务版本一致后重试。";
+      } finally {
         result.setAttribute("aria-busy", "false");
         runButton.disabled = false;
-        runButton.textContent = "运行脱敏分析";
+        caseSelect.disabled = false;
+        runButton.textContent = "运行并核对案例";
       }
     });
+    const loadPromise = loadCases();
   </script>
 </body>
 </html>

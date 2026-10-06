@@ -42,8 +42,8 @@ class DemoEndpointTests(unittest.TestCase):
             self.assertIn("text/html", response.headers["content-type"])
             self.assertIn("本机脱敏演示", response.text)
             self.assertIn("/analyses", response.text)
-            self.assertIn('"username":"test_user"', response.text)
-            self.assertIn('"job_id":"demo_ai_agent_intern"', response.text)
+            self.assertIn("/demo/cases", response.text)
+            self.assertIn("模拟", response.text)
             self.assertEqual(response.headers["cache-control"], "no-store")
             self.assertEqual(
                 response.headers["x-content-type-options"], "nosniff"

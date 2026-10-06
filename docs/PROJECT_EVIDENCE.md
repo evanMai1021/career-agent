@@ -11,14 +11,16 @@
 | 可信事实与模型建议分层 | [`job_analysis_agent.py`](../job_analysis_agent.py)、[`job_analysis_evaluation.py`](../job_analysis_evaluation.py) | [`test_job_analysis_agent.py`](../test_job_analysis_agent.py)、[`test_job_analysis_evaluation.py`](../test_job_analysis_evaluation.py)、[离线评估报告](../examples/careeragent_v1_2_evaluation_report.json) | `trusted_facts` 只包含 Python 核对的要求、状态和证据 ID；模型解释与建议另行标为未验证。 | 已消除模型幻觉，或模型自由文本都经过完整事实核查。 |
 | 固定案例离线评估 | [`job_analysis_evaluation_runner.py`](../job_analysis_evaluation_runner.py)、[`job_analysis_evaluation.py`](../job_analysis_evaluation.py) | [`test_job_analysis_evaluation.py`](../test_job_analysis_evaluation.py)、[26 案例报告](../examples/careeragent_v1_2_evaluation_report.json) | 用模型响应替身运行 26 个固定脱敏案例，并公开各指标的分子、分母和适用案例数。 | `26/26` 等于任意 JD 的准确率；报告中的 `0/4` 等于完整幻觉治理。 |
 | 本机只读 API | [`api_app.py`](../api_app.py) | [`test_api_app.py`](../test_api_app.py)、[完整脱敏响应](../examples/careeragent_v1_3_api_analysis_output.json) | 提供健康检查、岗位要求查询与本机离线确定性分析；HTTP 请求不能选择数据文件或模型。 | 已有登录系统、生产部署、任意 JD 接入或真实候选人数据服务。 |
-| 本机可视化演示 | [`api_app.py`](../api_app.py)、[`demo.html`](../demo.html) | [`test_api_app.py`](../test_api_app.py) 的 `DemoEndpointTests`、[`test_demo_page.cjs`](../test_demo_page.cjs) 的交互替身测试、[固定脱敏响应](../examples/careeragent_v1_3_api_analysis_output.json) | 在本机页面一键查看固定脱敏案例的匹配状态、要求和证据 ID；请求有超时与错误提示，可在失败后重试。 | 页面支持任意 JD、真实用户登录或公开联网使用；浏览器超时能取消所有服务端计算。 |
+| 本机输入与判定过程展示 | [`api_app.py`](../api_app.py)、[`demo_cases.py`](../demo_cases.py)、[`demo.html`](../demo.html) | [`test_demo_cases.py`](../test_demo_cases.py)、[`test_demo_page.cjs`](../test_demo_page.cjs)、[模拟拒绝截图](images/careeragent-v1-6-simulated-rejection.jpg) | 切换五个模拟输入，查看证据来源、真实规则判定、执行步骤和预设／实际核对；请求有超时与恢复提示。 | 模拟案例代表真实个人能力或任意 JD 准确率；页面支持真实用户登录或公网使用。 |
+| 完整历史用户资料展示 | [`demo_profile.py`](../demo_profile.py)、[`demo.html`](../demo.html) | [`test_demo_profile.py`](../test_demo_profile.py)、[历史资料截图](images/careeragent-v1-6-historical-user-profile.jpg) | 查看固定历史用户的全部演示字段，将已验证证据、待核实描述和学习记录分别展示。 | 已经核实用户当前全部能力，或历史项目测试数证明个人独立掌握。 |
 
 这些是**项目能力**的证据映射，不证明任何人的独立编码程度。简历中的“独立设计”“独立实现”等个人贡献表述，须另有本人完成过程的证据。
 
 ## 数据流与技术决策
 
 ```text
-本机演示页：打开 /demo → 点击运行固定脱敏案例 → 同源 POST /analyses → 分开显示匹配与可信事实
+本机演示页：打开 /demo → 加载模拟输入和预设 → 选择案例 → POST /demo/analyses
+                       → 校验拒绝，或计算匹配与可信事实 → 分开显示执行、判定原因和案例核对
 本地 API：请求用户名与岗位 ID → 固定文件 → 结构校验 → Python 匹配与 trusted_facts → 只读响应
 JD Agent：限定范围 → 模型请求三个只读工具 → Python 执行并校验 → Python 计算匹配状态
                                                         → 模型生成建议（未验证）→ Python 核对输出
@@ -29,7 +31,7 @@ JD Agent：限定范围 → 模型请求三个只读工具 → Python 执行并�
 
 1. **先校验再匹配**：`job_data.py` 检查必需字段、类型、枚举和重复 ID；`job_matching.py` 只比较相同的 `skill_id`。这样状态有可复查的输入和规则，但输入证据本身仍需由人核实。
 2. **事实由 Python 生成**：`build_trusted_facts` 再核对证据技能、层级、验证状态、关联 ID 与匹配状态，避免把模型自由文本放进可信事实字段。模型建议仍可能包含错误。
-3. **客户端范围固定**：分析接口只接受用户名和岗位 ID；服务端指定数据文件。`/demo` 固定使用脱敏示例并复用同一接口。API 默认不调用模型，也没有身份验证，只能按 README 用本机脱敏数据演示。
+3. **客户端范围固定**：原 `/analyses` 只接受用户名和岗位 ID，服务端指定数据文件。V1.6 页面通过 `/demo/analyses` 只提交白名单案例 ID，复用相同规则函数而不是原接口；历史资料通过 `/demo/profile` 独立读取。API 默认不调用模型，也没有身份验证，只能按 README 用本机脱敏数据演示。
 4. **评估保留失败信息**：固定案例使用模型响应替身；运行异常记录为失败，指标按适用案例计数。报告显示自由文本虚构声明在 4 个适用案例中有 3 个被接受，所以不能把案例通过数写成模型质量分数。
 
 ## 一次问题修复案例
