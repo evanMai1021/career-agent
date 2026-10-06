@@ -11,12 +11,14 @@
 | 可信事实与模型建议分层 | [`job_analysis_agent.py`](../job_analysis_agent.py)、[`job_analysis_evaluation.py`](../job_analysis_evaluation.py) | [`test_job_analysis_agent.py`](../test_job_analysis_agent.py)、[`test_job_analysis_evaluation.py`](../test_job_analysis_evaluation.py)、[离线评估报告](../examples/careeragent_v1_2_evaluation_report.json) | `trusted_facts` 只包含 Python 核对的要求、状态和证据 ID；模型解释与建议另行标为未验证。 | 已消除模型幻觉，或模型自由文本都经过完整事实核查。 |
 | 固定案例离线评估 | [`job_analysis_evaluation_runner.py`](../job_analysis_evaluation_runner.py)、[`job_analysis_evaluation.py`](../job_analysis_evaluation.py) | [`test_job_analysis_evaluation.py`](../test_job_analysis_evaluation.py)、[26 案例报告](../examples/careeragent_v1_2_evaluation_report.json) | 用模型响应替身运行 26 个固定脱敏案例，并公开各指标的分子、分母和适用案例数。 | `26/26` 等于任意 JD 的准确率；报告中的 `0/4` 等于完整幻觉治理。 |
 | 本机只读 API | [`api_app.py`](../api_app.py) | [`test_api_app.py`](../test_api_app.py)、[完整脱敏响应](../examples/careeragent_v1_3_api_analysis_output.json) | 提供健康检查、岗位要求查询与本机离线确定性分析；HTTP 请求不能选择数据文件或模型。 | 已有登录系统、生产部署、任意 JD 接入或真实候选人数据服务。 |
+| 本机可视化演示 | [`api_app.py`](../api_app.py)、[`demo.html`](../demo.html) | [`test_api_app.py`](../test_api_app.py) 的 `DemoEndpointTests`、[固定脱敏响应](../examples/careeragent_v1_3_api_analysis_output.json) | 在本机页面一键查看固定脱敏案例的匹配状态、要求和证据 ID，结果复用只读 API。 | 页面支持任意 JD、真实用户登录或公开联网使用。 |
 
 这些是**项目能力**的证据映射，不证明任何人的独立编码程度。简历中的“独立设计”“独立实现”等个人贡献表述，须另有本人完成过程的证据。
 
 ## 数据流与技术决策
 
 ```text
+本机演示页：打开 /demo → 点击运行固定脱敏案例 → 同源 POST /analyses → 分开显示匹配与可信事实
 本地 API：请求用户名与岗位 ID → 固定文件 → 结构校验 → Python 匹配与 trusted_facts → 只读响应
 JD Agent：限定范围 → 模型请求三个只读工具 → Python 执行并校验 → Python 计算匹配状态
                                                         → 模型生成建议（未验证）→ Python 核对输出
@@ -27,7 +29,7 @@ JD Agent：限定范围 → 模型请求三个只读工具 → Python 执行并�
 
 1. **先校验再匹配**：`job_data.py` 检查必需字段、类型、枚举和重复 ID；`job_matching.py` 只比较相同的 `skill_id`。这样状态有可复查的输入和规则，但输入证据本身仍需由人核实。
 2. **事实由 Python 生成**：`build_trusted_facts` 再核对证据技能、层级、验证状态、关联 ID 与匹配状态，避免把模型自由文本放进可信事实字段。模型建议仍可能包含错误。
-3. **客户端范围固定**：`api_app.py` 只接受用户名和岗位 ID；服务端指定数据文件。API 默认不调用模型。它没有身份验证，只能按 README 用本机脱敏数据演示。
+3. **客户端范围固定**：分析接口只接受用户名和岗位 ID；服务端指定数据文件。`/demo` 固定使用脱敏示例并复用同一接口。API 默认不调用模型，也没有身份验证，只能按 README 用本机脱敏数据演示。
 4. **评估保留失败信息**：固定案例使用模型响应替身；运行异常记录为失败，指标按适用案例计数。报告显示自由文本虚构声明在 4 个适用案例中有 3 个被接受，所以不能把案例通过数写成模型质量分数。
 
 ## 一次问题修复案例

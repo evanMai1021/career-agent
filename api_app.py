@@ -1,4 +1,4 @@
-"""CareerAgent V1.3 本地只读 HTTP API。
+"""CareerAgent 本地只读 HTTP API 与脱敏演示页。
 
 数据文件路径只允许由服务端创建应用时注入，HTTP 客户端不能指定。
 """
@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from job_analysis_agent import build_trusted_facts
@@ -21,6 +22,7 @@ DEFAULT_JOBS_FILE = Path(__file__).resolve().parent / "jobs.json"
 DEFAULT_EVIDENCE_FILE = (
     Path(__file__).resolve().parent / "candidate_evidence.json"
 )
+DEMO_PAGE_FILE = Path(__file__).resolve().parent / "demo.html"
 
 
 class HealthResponse(BaseModel):
@@ -94,11 +96,29 @@ def create_app(
         if evidence_file is not None
         else DEFAULT_EVIDENCE_FILE
     )
-    api = FastAPI(title="CareerAgent Local API", version="1.3.0")
+    api = FastAPI(title="CareerAgent Local API", version="1.5.0")
 
     @api.get("/health", response_model=HealthResponse)
     def get_health() -> HealthResponse:
         return HealthResponse(status="ok")
+
+    @api.get("/demo", response_class=HTMLResponse)
+    def read_demo(request: Request) -> HTMLResponse:
+        """展示固定脱敏案例；页面本身不读取岗位或候选人数据。"""
+        if request.query_params:
+            raise HTTPException(status_code=422, detail="不接受查询参数。")
+        try:
+            content = DEMO_PAGE_FILE.read_text(encoding="utf-8")
+        except OSError:
+            raise HTTPException(status_code=503, detail="演示页暂不可用。") from None
+        return HTMLResponse(
+            content,
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "Referrer-Policy": "no-referrer",
+            },
+        )
 
     @api.get(
         "/jobs/{job_id}/requirements",

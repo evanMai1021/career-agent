@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>CareerAgent · 本机脱敏演示</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #163047; background: #f2f6f7; }
+    main { max-width: 1080px; margin: auto; padding: 38px 24px 72px; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.15; letter-spacing: -.035em; margin: 14px 0; }
+    h2 { font-size: 1.35rem; margin-bottom: 16px; }
+    h3 { font-size: 1.05rem; margin-bottom: 8px; }
+    p { line-height: 1.65; }
+    .eyebrow { color: #006b68; font-size: .85rem; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+    .lead { max-width: 680px; color: #506878; font-size: 1.08rem; }
+    .hero { padding: 38px; border-radius: 26px; color: #f7ffff; background: linear-gradient(120deg, #123a4d, #126d70); box-shadow: 0 18px 48px #173f4a24; }
+    .hero .eyebrow, .hero .lead { color: #c8ebea; }
+    .chips, .counts { display: flex; flex-wrap: wrap; gap: 9px; }
+    .chip { display: inline-flex; align-items: center; border-radius: 999px; padding: 7px 12px; background: #e6f2f0; color: #145b5d; font-size: .85rem; font-weight: 700; }
+    .hero .chip { background: #ffffff24; color: #f7ffff; }
+    section { margin-top: 32px; }
+    .flow, .grid { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .step, .panel, .match, .fact { background: #fff; border: 1px solid #dbe7e8; border-radius: 18px; padding: 20px; }
+    .step small { color: #0a7978; font-weight: 800; }
+    .step p, .muted { color: #5b7180; }
+    .step p { margin-bottom: 0; }
+    .panel { padding: 26px; }
+    .action-row { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+    button { border: 0; border-radius: 11px; padding: 13px 19px; color: #fff; background: #087a75; font: inherit; font-weight: 750; cursor: pointer; }
+    button:hover { background: #05635f; }
+    button:focus-visible { outline: 3px solid #ffba5a; outline-offset: 3px; }
+    button:disabled { opacity: .55; cursor: wait; }
+    .status { min-height: 1.6em; margin: 0; color: #335c69; }
+    .result-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; align-items: start; }
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .match { border-left: 5px solid #a9b8bf; }
+    .match.matched { border-left-color: #12815e; }
+    .match.partial { border-left-color: #d28b20; }
+    .match.unverified { border-left-color: #7274b8; }
+    .match.missing { border-left-color: #b46b6b; }
+    .badge { display: inline-block; margin-bottom: 12px; border-radius: 7px; padding: 4px 9px; background: #edf2f4; color: #304a59; font-size: .78rem; font-weight: 800; }
+    .match.matched .badge { background: #e2f5ea; color: #116445; }
+    .match.partial .badge { background: #fff0d9; color: #925a0c; }
+    .match.unverified .badge { background: #eeedfb; color: #595b9b; }
+    .match.missing .badge { background: #fae9e9; color: #985252; }
+    .idline { font-size: .88rem; overflow-wrap: anywhere; color: #526a79; }
+    .fact { padding: 16px 20px; margin-bottom: 10px; }
+    .fact p { margin-bottom: 5px; }
+    .legend { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .legend div { border-top: 3px solid #c7d6d8; padding-top: 8px; font-size: .9rem; }
+    .legend .matched { border-top-color: #12815e; }
+    .legend .partial { border-top-color: #d28b20; }
+    .legend .unverified { border-top-color: #7274b8; }
+    .legend .missing { border-top-color: #b46b6b; }
+    .legend strong { display: block; }
+    .notice { border-left: 4px solid #e7a745; padding: 14px 18px; background: #fff9ec; border-radius: 7px; color: #5d4e32; }
+    [hidden] { display: none !important; }
+    @media (max-width: 900px) { .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 720px) { main { padding: 18px 14px 48px; } .hero { padding: 26px 22px; } .flow, .grid, .legend { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <div class="eyebrow">CareerAgent / Local demo</div>
+      <h1>一眼看清岗位匹配的依据</h1>
+      <p class="lead">用固定脱敏示例演示：岗位要求如何与候选人证据关联，以及哪些结论可以进入可信事实。</p>
+      <div class="chips"><span class="chip">本机脱敏演示</span><span class="chip">无需 API Key</span><span class="chip">不修改数据</span></div>
+    </header>
+
+    <section aria-labelledby="flow-title">
+      <h2 id="flow-title">分析如何产生</h2>
+      <div class="flow">
+        <div class="step"><small>01 / 输入</small><h3>固定岗位与证据</h3><p>只读取仓库中的脱敏示例，不接受浏览器指定文件路径。</p></div>
+        <div class="step"><small>02 / 匹配</small><h3>Python 确定状态</h3><p>按相同技能 ID、证据层级和验证标记计算四种状态。</p></div>
+        <div class="step"><small>03 / 输出</small><h3>保留可核对来源</h3><p>将要求、状态和证据 ID 放入可信事实；本页不生成模型建议。</p></div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="run-title">
+      <h2 id="run-title">运行一次真实的本机离线分析</h2>
+      <p class="muted">示例范围：<code>test_user</code> · <code>demo_ai_agent_intern</code>。点击后调用现有只读分析接口。</p>
+      <div class="action-row"><button id="run" type="button">运行脱敏分析</button><p id="status" class="status" role="status" aria-live="polite">等待运行。</p></div>
+    </section>
+
+    <section id="result" hidden aria-labelledby="result-title">
+      <div class="result-heading"><div><h2 id="result-title">分析结果</h2><p id="job-title" class="muted"></p></div><div id="counts" class="counts"></div></div>
+      <div id="matches" class="grid"></div>
+      <section class="panel" aria-labelledby="facts-title"><h2 id="facts-title">可信事实与证据 ID</h2><p class="muted">这些字段由 Python 根据结构化数据生成，不包含模型自由文本。</p><div id="facts"></div></section>
+    </section>
+
+    <section class="panel" aria-labelledby="legend-title">
+      <h2 id="legend-title">四种状态是什么意思？</h2>
+      <div class="legend">
+        <div class="matched"><strong>matched · 已匹配</strong>有同技能、已验证的项目或生产级证据。</div>
+        <div class="partial"><strong>partial · 部分匹配</strong>有同技能、已验证的学习或练习证据。</div>
+        <div class="unverified"><strong>unverified · 待核实</strong>有相关描述，但证据尚未验证。</div>
+        <div class="missing"><strong>missing · 缺少证据</strong>当前数据中没有同技能证据。</div>
+      </div>
+    </section>
+
+    <section class="notice"><strong>边界说明：</strong>“已验证”是输入数据中的标记，并非程序自动证明现实能力。此页只针对固定脱敏案例；没有身份验证，不可用于真实候选人数据或公网。</section>
+  </main>
+  <script>
+    const DEMO_REQUEST = {"username":"test_user","job_id":"demo_ai_agent_intern"};
+    const labels = {matched: "已匹配", partial: "部分匹配", unverified: "待核实", missing: "缺少证据"};
+    const categoryLabels = {required: "必需", preferred: "加分"};
+    const order = ["matched", "partial", "unverified", "missing"];
+    const runButton = document.querySelector("#run");
+    const statusLine = document.querySelector("#status");
+    const result = document.querySelector("#result");
+
+    function textNode(parent, tag, className, value) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      node.textContent = String(value);
+      parent.append(node);
+      return node;
+    }
+
+    function ids(values) {
+      return Array.isArray(values) && values.length ? values.join("、") : "无";
+    }
+
+    function render(data) {
+      document.querySelector("#job-title").textContent = `${data.title} · ${data.job_id} · 离线确定性分析（未调用模型）`;
+      const counts = document.querySelector("#counts");
+      counts.replaceChildren();
+      for (const state of order) {
+        const count = data.matches.filter(match => match.status === state).length;
+        textNode(counts, "span", "chip", `${labels[state]} ${count}`);
+      }
+
+      const matches = document.querySelector("#matches");
+      matches.replaceChildren();
+      for (const match of data.matches) {
+        const card = document.createElement("article");
+        card.className = `match ${order.includes(match.status) ? match.status : ""}`;
+        textNode(card, "span", "badge", labels[match.status] || "未知状态");
+        textNode(card, "h3", "", match.description);
+        textNode(card, "p", "idline", `要求 ${match.requirement_id} · 技能 ${match.skill_id} · ${categoryLabels[match.category] || "未知类别"} · 优先级 ${match.priority}`);
+        textNode(card, "p", "idline", `关联证据 ID：${ids(match.related_evidence_ids)}`);
+        matches.append(card);
+      }
+
+      const facts = document.querySelector("#facts");
+      facts.replaceChildren();
+      for (const fact of data.trusted_facts) {
+        const row = document.createElement("article");
+        row.className = "fact";
+        textNode(row, "strong", "", `${fact.requirement_id} · ${labels[fact.status] || "未知状态"}`);
+        textNode(row, "p", "idline", `已验证证据 ID：${ids(fact.verified_evidence_ids)}`);
+        textNode(row, "p", "idline", `未验证证据 ID：${ids(fact.unverified_evidence_ids)}`);
+        textNode(row, "p", "idline", `来源：${fact.origin}`);
+        facts.append(row);
+      }
+      result.hidden = false;
+    }
+
+    runButton.addEventListener("click", async () => {
+      runButton.disabled = true;
+      result.hidden = true;
+      statusLine.textContent = "正在读取本机脱敏数据并计算匹配…";
+      try {
+        const response = await fetch("/analyses", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(DEMO_REQUEST),
+        });
+        if (!response.ok) throw new Error("分析请求失败");
+        render(await response.json());
+        statusLine.textContent = "完成：结果由本机 Python 规则生成，未调用模型。";
+      } catch (_) {
+        statusLine.textContent = "暂时无法完成演示，请检查本机脱敏数据后重试。";
+      } finally {
+        runButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

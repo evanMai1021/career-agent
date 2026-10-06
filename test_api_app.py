@@ -1,9 +1,10 @@
-"""CareerAgent V1.3 本地只读 HTTP API 的离线契约测试。"""
+"""CareerAgent 本地只读 HTTP API 与演示页的离线契约测试。"""
 
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -21,6 +22,55 @@ class HealthEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
+
+
+class DemoEndpointTests(unittest.TestCase):
+    def test_demo_is_self_contained_and_does_not_read_project_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing_jobs = Path(temp_dir) / "missing_jobs.json"
+            missing_evidence = Path(temp_dir) / "missing_evidence.json"
+            client = TestClient(
+                create_app(
+                    jobs_file=missing_jobs,
+                    evidence_file=missing_evidence,
+                )
+            )
+
+            response = client.get("/demo")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("text/html", response.headers["content-type"])
+            self.assertIn("本机脱敏演示", response.text)
+            self.assertIn("/analyses", response.text)
+            self.assertIn('"username":"test_user"', response.text)
+            self.assertIn('"job_id":"demo_ai_agent_intern"', response.text)
+            self.assertEqual(response.headers["cache-control"], "no-store")
+            self.assertEqual(
+                response.headers["x-content-type-options"], "nosniff"
+            )
+            self.assertNotIn("innerHTML", response.text)
+            self.assertNotIn("<script src=", response.text)
+            self.assertNotIn(str(missing_jobs), response.text)
+            self.assertFalse(missing_jobs.exists())
+            self.assertFalse(missing_evidence.exists())
+
+    def test_demo_rejects_query_parameters(self):
+        response = TestClient(app).get(
+            "/demo", params={"jobs_file": ".env"}
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json(), {"detail": "不接受查询参数。"})
+
+    def test_missing_demo_file_returns_503_without_path_leak(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing_page = Path(temp_dir) / "missing_demo.html"
+            with patch("api_app.DEMO_PAGE_FILE", missing_page):
+                response = TestClient(app).get("/demo")
+
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.json(), {"detail": "演示页暂不可用。"})
+            self.assertNotIn(str(missing_page), response.text)
 
 
 class JobRequirementsEndpointTests(unittest.TestCase):
