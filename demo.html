@@ -85,6 +85,7 @@
       <h2 id="run-title">运行一次真实的本机离线分析</h2>
       <p class="muted">示例范围：<code>test_user</code> · <code>demo_ai_agent_intern</code>。点击后调用现有只读分析接口。</p>
       <div class="action-row"><button id="run" type="button">运行脱敏分析</button><p id="status" class="status" role="status" aria-live="polite">等待运行。</p></div>
+      <noscript><p class="notice">此演示页需要启用 JavaScript。也可按 README 的本地接口示例查看分析结果。</p></noscript>
     </section>
 
     <section id="result" hidden aria-labelledby="result-title">
@@ -162,22 +163,43 @@
     }
 
     runButton.addEventListener("click", async () => {
+      if (runButton.disabled) return;
       runButton.disabled = true;
+      runButton.textContent = "分析中…";
       result.hidden = true;
+      result.setAttribute("aria-busy", "true");
       statusLine.textContent = "正在读取本机脱敏数据并计算匹配…";
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      let failureMessage = "无法连接本机服务，请确认服务已启动后重试。";
       try {
         const response = await fetch("/analyses", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify(DEMO_REQUEST),
+          signal: controller.signal,
         });
-        if (!response.ok) throw new Error("分析请求失败");
+        if (!response.ok) {
+          const messages = {
+            404: "脱敏示例不存在，请检查仓库中的示例数据后重试。",
+            422: "演示请求未通过校验，请刷新页面后重试。",
+            503: "脱敏数据暂不可用，请检查本机示例文件后重试。",
+          };
+          failureMessage = messages[response.status] || "本机服务暂时异常，请稍后重试。";
+          throw new Error("分析请求失败");
+        }
+        failureMessage = "结果格式异常，请确认页面与本机服务版本一致后重试。";
         render(await response.json());
         statusLine.textContent = "完成：结果由本机 Python 规则生成，未调用模型。";
       } catch (_) {
-        statusLine.textContent = "暂时无法完成演示，请检查本机脱敏数据后重试。";
+        statusLine.textContent = controller.signal.aborted
+          ? "分析超过 10 秒，已停止等待；请检查本机服务后重试。"
+          : failureMessage;
       } finally {
+        clearTimeout(timeout);
+        result.setAttribute("aria-busy", "false");
         runButton.disabled = false;
+        runButton.textContent = "运行脱敏分析";
       }
     });
   </script>

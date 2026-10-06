@@ -96,7 +96,7 @@ def create_app(
         if evidence_file is not None
         else DEFAULT_EVIDENCE_FILE
     )
-    api = FastAPI(title="CareerAgent Local API", version="1.5.0")
+    api = FastAPI(title="CareerAgent Local API", version="1.5.1")
 
     @api.get("/health", response_model=HealthResponse)
     def get_health() -> HealthResponse:

@@ -11,7 +11,7 @@
 | 可信事实与模型建议分层 | [`job_analysis_agent.py`](../job_analysis_agent.py)、[`job_analysis_evaluation.py`](../job_analysis_evaluation.py) | [`test_job_analysis_agent.py`](../test_job_analysis_agent.py)、[`test_job_analysis_evaluation.py`](../test_job_analysis_evaluation.py)、[离线评估报告](../examples/careeragent_v1_2_evaluation_report.json) | `trusted_facts` 只包含 Python 核对的要求、状态和证据 ID；模型解释与建议另行标为未验证。 | 已消除模型幻觉，或模型自由文本都经过完整事实核查。 |
 | 固定案例离线评估 | [`job_analysis_evaluation_runner.py`](../job_analysis_evaluation_runner.py)、[`job_analysis_evaluation.py`](../job_analysis_evaluation.py) | [`test_job_analysis_evaluation.py`](../test_job_analysis_evaluation.py)、[26 案例报告](../examples/careeragent_v1_2_evaluation_report.json) | 用模型响应替身运行 26 个固定脱敏案例，并公开各指标的分子、分母和适用案例数。 | `26/26` 等于任意 JD 的准确率；报告中的 `0/4` 等于完整幻觉治理。 |
 | 本机只读 API | [`api_app.py`](../api_app.py) | [`test_api_app.py`](../test_api_app.py)、[完整脱敏响应](../examples/careeragent_v1_3_api_analysis_output.json) | 提供健康检查、岗位要求查询与本机离线确定性分析；HTTP 请求不能选择数据文件或模型。 | 已有登录系统、生产部署、任意 JD 接入或真实候选人数据服务。 |
-| 本机可视化演示 | [`api_app.py`](../api_app.py)、[`demo.html`](../demo.html) | [`test_api_app.py`](../test_api_app.py) 的 `DemoEndpointTests`、[固定脱敏响应](../examples/careeragent_v1_3_api_analysis_output.json) | 在本机页面一键查看固定脱敏案例的匹配状态、要求和证据 ID，结果复用只读 API。 | 页面支持任意 JD、真实用户登录或公开联网使用。 |
+| 本机可视化演示 | [`api_app.py`](../api_app.py)、[`demo.html`](../demo.html) | [`test_api_app.py`](../test_api_app.py) 的 `DemoEndpointTests`、[`test_demo_page.cjs`](../test_demo_page.cjs) 的交互替身测试、[固定脱敏响应](../examples/careeragent_v1_3_api_analysis_output.json) | 在本机页面一键查看固定脱敏案例的匹配状态、要求和证据 ID；请求有超时与错误提示，可在失败后重试。 | 页面支持任意 JD、真实用户登录或公开联网使用；浏览器超时能取消所有服务端计算。 |
 
 这些是**项目能力**的证据映射，不证明任何人的独立编码程度。简历中的“独立设计”“独立实现”等个人贡献表述，须另有本人完成过程的证据。
 
