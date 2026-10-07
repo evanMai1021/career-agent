@@ -13,9 +13,13 @@
 | 本机只读 API | [`api_app.py`](../api_app.py) | [`test_api_app.py`](../test_api_app.py)、[完整脱敏响应](../examples/careeragent_v1_3_api_analysis_output.json) | 提供健康检查、岗位要求查询与本机离线确定性分析；HTTP 请求不能选择数据文件或模型。 | 已有登录系统、生产部署、任意 JD 接入或真实候选人数据服务。 |
 | 本机输入与判定过程展示 | [`api_app.py`](../api_app.py)、[`demo_cases.py`](../demo_cases.py)、[`demo.html`](../demo.html) | [`test_demo_cases.py`](../test_demo_cases.py)、[`test_demo_page.cjs`](../test_demo_page.cjs)、[模拟拒绝截图](images/careeragent-v1-6-simulated-rejection.jpg) | 切换五个模拟输入，查看证据来源、真实规则判定、执行步骤和预设／实际核对；请求有超时与恢复提示。 | 模拟案例代表真实个人能力或任意 JD 准确率；页面支持真实用户登录或公网使用。 |
 | 完整历史用户资料展示 | [`demo_profile.py`](../demo_profile.py)、[`demo.html`](../demo.html) | [`test_demo_profile.py`](../test_demo_profile.py)、[历史资料截图](images/careeragent-v1-6-historical-user-profile.jpg) | 查看固定历史用户的全部演示字段，将已验证证据、待核实描述和学习记录分别展示。 | 已经核实用户当前全部能力，或历史项目测试数证明个人独立掌握。 |
-| 本机私有结构化资料分析 | [`private_case_runner.py`](../private_case_runner.py)、[`private_case_server.py`](../private_case_server.py)、[`private_demo.html`](../private_demo.html) | [`test_private_case_runner.py`](../test_private_case_runner.py)、[`test_private_case_server.py`](../test_private_case_server.py)、[`test_private_demo_page.cjs`](../test_private_demo_page.cjs)、[运行与输入说明](PRIVATE_CASES.md) | 明确指定手工脱敏 JSON，使用同一快照展示全部输入证据、关联结果及可信事实；资格分离，可选人工预设核对，不调用模型或写文件。 | 自动理解任意 JD、解析原始 PDF、证明简历声明真实，或已经具备认证和公网候选人服务。 |
+| 本机私有结构化资料分析 | [`private_case_runner.py`](../private_case_runner.py)、[`private_case_server.py`](../private_case_server.py)、[`private_demo.html`](../private_demo.html) | [`test_private_case_runner.py`](../test_private_case_runner.py)、[`test_private_case_server.py`](../test_private_case_server.py)、[`test_private_demo_page.cjs`](../test_private_demo_page.cjs)、[`test_private_case_template.py`](../test_private_case_template.py)、[纯虚构模板](../examples/careeragent_v1_7_private_case_template.json)、[运行与输入说明](PRIVATE_CASES.md) | 明确指定手工脱敏 JSON，使用同一快照展示全部输入证据、关联结果及可信事实；资格分离，可选人工预设核对，不调用模型或写文件。 | 自动理解任意 JD、解析原始 PDF、证明简历声明真实，或已经具备认证和公网候选人服务。 |
 
 这些是**项目能力**的证据映射，不证明任何人的独立编码程度。简历中的“独立设计”“独立实现”等个人贡献表述，须另有本人完成过程的证据。
+
+文件文字导入补充：[`file_importer.py`](../file_importer.py)、[`file_import_server.py`](../file_import_server.py) 和 [`file_import.html`](../file_import.html) 提供本机 PDF／TXT／DOCX 文字提取与人工校对；[`test_file_importer.py`](../test_file_importer.py)、[`test_file_import_server.py`](../test_file_import_server.py)、[`test_file_import_page.cjs`](../test_file_import_page.cjs) 验证解析及交互边界。可介绍为“有位置标记、限额及固定错误提示的本机文字预览”；不能介绍为“完整简历解析、能力核实或文件自动参与岗位分析”。运行见 [FILE_IMPORT.md](FILE_IMPORT.md)。
+
+可选 JSON 整理：[`text_json_formatter.py`](../text_json_formatter.py) 和 [`test_text_json_formatter.py`](../test_text_json_formatter.py) 验证确认后的修正文字、外发同意、描述摘录、字段约定、缺项处理与全部证据 false。可以介绍“在明确同意后由模型辅助整理待复核草稿，再本地校验”；不能声称“真实千问格式化已验收、技能映射准确或描述出现就证明能力”。没有自动保存／分析，实际模型可用性与语义准确性仍待验收。
 
 ## 数据流与技术决策
 

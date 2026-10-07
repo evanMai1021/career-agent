@@ -2,6 +2,52 @@
 
 这两个入口只读取本机调用者明确指定的、手工整理的脱敏 JSON。不解析原始 PDF，不扫描目录，不调用模型，也不写入案例或其他文件。终端入口运行后退出；独立页面入口启动只监听本机的服务，不改变原 `/demo` 或 `api_app.py` 的数据范围。
 
+PDF／TXT／DOCX 的[独立文字导入页](FILE_IMPORT.md)提供预览和人工校对，可选将修正文字交给模型整理为待复核 JSON；证据全部 false，未连接这里的分析。完整草稿须人工核对、手动保存并明确指定给本入口，不能自动升级验证标记。
+
+## 先用纯虚构模板运行
+
+仓库提供[纯虚构 JSON 模板](../examples/careeragent_v1_7_private_case_template.json)，不含任何人的简历或真实 JD。它有 4 项要求、4 条证据，原样运行应各产生 1 项 `matched`、`partial`、`unverified`、`missing`，并保留 1 条未关联证据。模板中的 `verified=true` 仅模拟两种状态，不能复制成自己的能力证明。
+
+在项目根目录的 PowerShell 运行：
+
+```powershell
+.venv\Scripts\python.exe -X utf8 private_case_runner.py --case-file "examples\careeragent_v1_7_private_case_template.json"
+```
+
+应显示分析完成、四态各 1、人工预设核对通过；终端入口自动退出。页面使用同一模板：
+
+```powershell
+.venv\Scripts\python.exe -X utf8 private_case_server.py --case-file "examples\careeragent_v1_7_private_case_template.json" --port 8001
+```
+
+打开 `http://127.0.0.1:8001/private`，点击“分析这份资料”。页面展示的是虚构模板，不是你的个人资料。结束时在终端按 `Ctrl+C` 并关闭页面。
+
+## 如何填写自己的脱敏资料
+
+不要直接修改公开模板。在项目根目录 PowerShell 中先检查目标文件不存在，再复制到已忽略的 `notes/`：
+
+```powershell
+if (Test-Path -LiteralPath "notes\my-private-case.json") {
+    throw "目标已存在，请使用另一个文件名，不要覆盖已有资料。"
+} else {
+    if (-not (Test-Path -LiteralPath "notes")) {
+        New-Item -ItemType Directory -Path "notes" | Out-Null
+    }
+    Copy-Item -LiteralPath "examples\careeragent_v1_7_private_case_template.json" -Destination "notes\my-private-case.json"
+}
+```
+
+在 PyCharm 项目侧栏展开 `notes`，打开复制后的 JSON，然后按以下顺序修改：
+
+1. 先把所有证据的 `verified` 改为布尔值 `false`，删除整个 `expected` 对象；它的原预设只适用于虚构模板。删除对象后注意去掉前一字段结尾多余的逗号，JSON 不支持注释。
+2. 将 `data_kind` 改为 `real_source_sanitized_draft`；使用匿名 `case_id`、`job_id` 和 `username`，不要用姓名、邮箱或电话。替换模板 `notice` 和来源说明，不保留虚构来源冒充真实资料。
+3. 填写 `job.requirements`：每项要求有独立 `requirement_id`，同一技能使用相同 `skill_id`。`category` 只填 `required` 或 `preferred`，依据 JD 原文；`priority` 只填整数 1、2、3，作为人工排序，不是招聘方权重。不把并列举例自动拆成额外硬门槛。
+4. 填写 `candidate.evidence`：每条有唯一 `evidence_id`、技能 ID、描述、来源、层级及验证标记。层级仅限 `learning`、`practice`、`project`、`production`；声明来自简历不等于已验证，先保持 `verified=false`。与岗位无关的证据也可保留；没有证据可以用空列表。
+5. 替换或省略 `source_metadata` 与 `qualifications`，不把模板的虚构资格当成自己的经历。资格只能标 `unverified`，不计入技能匹配。姓名、院校、单位、照片、联系方式及本机绝对路径不要写入运行输入。
+6. 用下方终端命令运行副本。已删除预设时应显示“未核对”，不是错误；不要为得到“通过”而修改证据。若需要预设，应在执行前独立制定全部要求的状态，再按字段约定填写完整 `expected`。
+
+程序只按完全相同的 `skill_id` 关联证据，不自动识别同义词。例如通用数据库课程不能直接当成 MySQL 实践，Python 项目不能替代 Java 能力。本入口不外发资料；不要把未经脱敏的资料送入模型、公开终端输出或提交到 Git。独立导入页的可选模型整理须按其说明先脱敏、校对并明确同意外发，不作为真实性证明。
+
 ## 终端运行
 
 在项目根目录打开 PowerShell，使用已安装依赖的项目虚拟环境：
@@ -82,12 +128,12 @@
 ## 测试
 
 ```powershell
-.venv\Scripts\python.exe -m unittest test_private_case_runner test_private_case_server
+.venv\Scripts\python.exe -m unittest test_private_case_runner test_private_case_server test_private_case_template
 ```
 
 23 项终端入口测试和 22 项私有服务测试覆盖四态、同一快照、不变性、声明不升级、完整预设、共享错误检测、事实隔离、资格分离、敏感格式、错误处理、命令行退出码及本机访问边界。新增反例验证异常 Unicode 与终端控制字符在分析或服务启动前被拒绝，错误不回显原文、路径或异常堆栈；正常中文、表情和常见换行可完整保留。另有 13 项私有页面脚本测试，覆盖快照一致性、完整事实、重复点击、断连、超时、重试和文本安全展示。
 
-私人文件未提供时，这些人工资料测试仍应通过；包含私有入口的完整 Python 回归为 240 项。原演示页 30 项与私有页 13 项脚本测试合计 43 项，可用已安装的 Node.js 执行：
+另有 4 项模板测试，验证四态、终端输出、重置标记与快照不变性。加上独立文件导入／JSON 整理的 58 项，完整 Python 回归为 302 项，不依赖私人文件。原演示页 30 项与私有页 13 项脚本仍为 43 项，导入页另有 30 项，可用已安装的 Node.js 执行：
 
 ```powershell
 node --test test_demo_page.cjs test_private_demo_page.cjs

@@ -1,0 +1,111 @@
+{
+  "case_id": "synthetic_template",
+  "data_kind": "synthetic_private_test",
+  "notice": "纯虚构的格式与四态演示，不是任何人的简历、真实岗位或能力证明。true 验证标记仅用于模拟；改成真实资料前须将所有证据设为 false、删除 expected 并更换来源说明。",
+  "source_metadata": {
+    "jd": {
+      "kind": "synthetic",
+      "company": null,
+      "posting_date": null,
+      "url": null,
+      "origin_verified": false,
+      "interpretation_note": "四项要求和排序均为虚构演示，不是招聘方门槛或权重。"
+    },
+    "resume": {
+      "kind": "synthetic",
+      "content_independently_verified": false,
+      "privacy": "仅包含虚构匿名标识和说明，无真实个人信息。"
+    }
+  },
+  "qualifications": [
+    {
+      "qualification_id": "qual_demo",
+      "required": "模拟资格条件",
+      "declared": "模拟资格声明，尚未核实",
+      "source": "纯虚构模板",
+      "verification": "unverified",
+      "note": "仅演示资格与技能分离，不决定录用资格。"
+    }
+  ],
+  "job": {
+    "job_id": "synthetic_demo_job",
+    "title": "纯虚构技术岗位：四态格式演示",
+    "requirements": [
+      {
+        "requirement_id": "req_python",
+        "skill_id": "python",
+        "description": "模拟要求：使用 Python 完成一个小型项目。",
+        "category": "required",
+        "priority": 1
+      },
+      {
+        "requirement_id": "req_sql",
+        "skill_id": "sql",
+        "description": "模拟要求：具备 SQL 查询实践。",
+        "category": "required",
+        "priority": 1
+      },
+      {
+        "requirement_id": "req_linux",
+        "skill_id": "linux",
+        "description": "模拟要求：使用 Linux 常用命令排查问题。",
+        "category": "required",
+        "priority": 2
+      },
+      {
+        "requirement_id": "req_git",
+        "skill_id": "git",
+        "description": "模拟要求：使用 Git 管理版本。",
+        "category": "preferred",
+        "priority": 3
+      }
+    ]
+  },
+  "candidate": {
+    "username": "synthetic_demo_candidate",
+    "evidence": [
+      {
+        "evidence_id": "ev_python_project",
+        "skill_id": "python",
+        "description": "虚构的 Python 小项目记录，用于演示已验证项目状态。",
+        "level": "project",
+        "source": "纯虚构模板；true 是模拟输入，不是实际核验。",
+        "verified": true
+      },
+      {
+        "evidence_id": "ev_sql_practice",
+        "skill_id": "sql",
+        "description": "虚构的 SQL 练习记录，用于演示已验证练习状态。",
+        "level": "practice",
+        "source": "纯虚构模板；true 是模拟输入，不是实际核验。",
+        "verified": true
+      },
+      {
+        "evidence_id": "ev_linux_claim",
+        "skill_id": "linux",
+        "description": "虚构的 Linux 学习声明，未提供核验成果。",
+        "level": "learning",
+        "source": "纯虚构模板；仅用于演示待核实状态。",
+        "verified": false
+      },
+      {
+        "evidence_id": "ev_swift_other",
+        "skill_id": "swift",
+        "description": "虚构的 Swift 学习记录，未对应本次岗位要求。",
+        "level": "learning",
+        "source": "纯虚构模板；其他技能不能替代所缺的 Git 证据。",
+        "verified": false
+      }
+    ]
+  },
+  "expected": {
+    "execution_status": "completed",
+    "states": [
+      {"requirement_id": "req_python", "status": "matched"},
+      {"requirement_id": "req_sql", "status": "partial"},
+      {"requirement_id": "req_linux", "status": "unverified"},
+      {"requirement_id": "req_git", "status": "missing"}
+    ],
+    "note": "仅用于原始虚构模板的人工预设。修改岗位或证据时先删除整个 expected；没有预设将明确显示未核对。"
+  }
+}
