@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="data:,"><title>CareerAgent · 本机私有资料分析</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#183347;background:#f2f6f7;color-scheme:light}
+    *{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:auto;padding:32px 24px 64px}
+    h1{font-size:clamp(2rem,4vw,3rem);margin:12px 0}h2{font-size:1.35rem}h3{font-size:1.06rem;overflow-wrap:anywhere}p{line-height:1.65}
+    header{padding:32px;border-radius:24px;background:linear-gradient(120deg,#123a4d,#126d70);color:white}
+    .eyebrow{letter-spacing:.1em;font-weight:750;font-size:.8rem}.lead{color:#d1eeed;max-width:780px}
+    section{margin-top:24px}.panel,.card{padding:22px;border:1px solid #dbe7e8;border-radius:16px;background:white}
+    .notice{padding:14px 18px;background:#fff7e6;border-left:4px solid #d99a36;border-radius:8px;line-height:1.65}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .muted,.meta{color:#566e7c}.meta{font-size:.87rem;overflow-wrap:anywhere}.record{border-top:1px solid #deeaeb;padding-top:12px;margin-top:12px}
+    .counts{display:flex;flex-wrap:wrap;gap:10px}.chip{padding:8px 13px;background:#e6f2f0;border-radius:999px;font-weight:700}
+    .match{border-left:5px solid #a9b8bf}.matched{border-left-color:#13805d}.partial{border-left-color:#d18b20}.unverified{border-left-color:#7274b8}.missing{border-left-color:#b46b6b}
+    .badge{display:inline-block;padding:5px 9px;border-radius:7px;background:#edf2f4;font-weight:750;font-size:.85rem}
+    .pass{color:#116445}.fail{color:#985252}button{padding:13px 19px;background:#087a75;color:white;border:0;border-radius:10px;font:inherit;font-weight:750;cursor:pointer}
+    button:disabled{opacity:.5;cursor:wait}button:focus-visible{outline:3px solid #ffba5a;outline-offset:3px}
+    .actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap}details{margin-top:12px}summary{cursor:pointer;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem}
+    [hidden]{display:none!important}@media(max-width:850px){.cards{grid-template-columns:1fr 1fr}}@media(max-width:650px){main{padding:16px 12px 40px}.grid,.cards{grid-template-columns:1fr}header{padding:24px}}
+  </style>
+</head>
+<body><main>
+  <header><div class="eyebrow">CAREERAGENT / PRIVATE LOCAL VIEWER</div><h1>这份资料，怎样得出这份分析？</h1><p class="lead">查看启动时指定的脱敏资料，将岗位要求、来源声明、关联证据与实际判定放在同一条链路中。</p></header>
+  <section class="notice">仅本机私有使用，无模型调用、不修改文件。没有身份验证，同机其他进程仍可访问；不要在共享电脑、公网、代理或端口转发环境使用。页面和截图仍可能包含私人信息。</section>
+  <section class="panel"><div class="actions"><button id="load" type="button">重新加载资料</button><button id="run" type="button" disabled>分析这份资料</button><p id="status" role="status" aria-live="polite">正在加载启动时的资料快照…</p></div><p class="muted">文件改动不会自动更新此服务；请停止并重新启动后，再加载页面。这里没有上传、编辑或保存功能。</p><noscript>请启用 JavaScript，或使用本机私有命令行入口。</noscript></section>
+  <section id="input" hidden>
+    <div class="grid"><article class="panel"><h2>本次岗位要求</h2><div id="job"></div></article><article class="panel"><h2>来源与资料边界</h2><div id="source"></div></article></div>
+    <section class="panel"><h2>资格声明 · 不参与技能匹配</h2><div id="qualifications"></div></section>
+    <section><h2>候选人资料 · 本次输入的全部证据</h2><p class="muted">包含相关及无关技能，不把学习记录自动升级为能力；这只是整理后的输入，不是原始简历全部栏目。</p><div id="evidence" class="cards"></div></section>
+  </section>
+  <section id="outcome" class="panel" hidden><h2>执行与预设核对</h2><p id="execution"></p><p id="verification"></p><div id="counts" class="counts"></div><p class="muted">匹配不足不是程序执行失败；核对通过不是能力验证、应聘评分或招聘通过。</p></section>
+  <section id="result" hidden><h2>每项要求，关联了哪些证据？</h2><div id="matches" class="grid"></div><section class="panel"><h2>未关联的其他证据</h2><div id="other"></div></section><section class="notice" id="limits"></section></section>
+</main>
+<script>
+  const labels = {matched:"已匹配",partial:"部分匹配",unverified:"待核实",missing:"缺少证据"};
+  const levels = {learning:"学习",practice:"练习",project:"项目",production:"生产"};
+  const sourceLabels = {kind:'来源类型',collected_at:'收集日期',company:'单位',posting_date:'岗位发布日期',url:'原始链接',origin_verified:'来源核实标记',interpretation_note:'要求整理边界',pages:'简历页数',file_modified_date:'文件修改日期',content_independently_verified:'声明核实标记',privacy:'脱敏说明'};
+  const kindLabels = {real_source_sanitized_draft:'真实来源脱敏草案',synthetic_private_test:'人工测试资料',user_supplied_text:'用户提供文本',user_supplied_pdf:'用户提供简历 PDF',synthetic:'人工测试来源'};
+  const loadButton = document.querySelector('#load'), runButton = document.querySelector('#run');
+  const status = document.querySelector('#status'), input = document.querySelector('#input');
+  const result = document.querySelector('#result'), outcome = document.querySelector('#outcome');
+  let snapshot = null;
+  function node(parent, tag, text, className='') { const item=document.createElement(tag); item.textContent=String(text); item.className=className; parent.append(item); return item; }
+  function same(left,right) { if(left===right)return true; if(!left||!right||typeof left!=='object'||typeof right!=='object'||Array.isArray(left)!==Array.isArray(right))return false; const keys=Object.keys(left); return keys.length===Object.keys(right).length&&keys.every(key=>Object.hasOwn(right,key)&&same(left[key],right[key])); }
+  function text(value) { return typeof value==='string'&&value.trim().length>0; }
+  function validCase(data) { return data&&text(data.case_id)&&data.job&&text(data.job.title)&&Array.isArray(data.job.requirements)&&data.job.requirements.length&&data.job.requirements.every(item=>item&&['requirement_id','skill_id','description'].every(key=>text(item[key])))&&data.candidate&&Array.isArray(data.candidate.evidence)&&data.candidate.evidence.every(item=>item&&['evidence_id','skill_id','description','source'].every(key=>text(item[key]))&&typeof item.verified==='boolean'&&Object.hasOwn(levels,item.level)); }
+  class ViewerError extends Error {}
+  async function request(url, options={}) {
+    const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),10000);
+    let message='无法连接本机私有服务，请启动服务后重试。';
+    try {
+      const response=await fetch(url,{...options,cache:'no-store',headers:{'X-CareerAgent-Private':'local-readonly',...options.headers},signal:controller.signal});
+      if(!response.ok){ message=({403:'访问被拒绝，请使用本机私有页面地址。',409:'资料快照已变化，请重新加载资料。',422:'请求不符合约定，请刷新页面。',503:'私有分析暂不可用，请检查资料后重启服务。'})[response.status]||'本机私有服务异常，请稍后重试。'; throw new Error(); }
+      message='资料或结果格式异常，请确认页面与服务一致。';
+      return await response.json();
+    } catch(error) { throw new ViewerError(controller.signal.aborted?'超过 10 秒，已停止等待；可重试，服务端计算不保证取消。':message); }
+    finally { clearTimeout(timer); }
+  }
+  function evidenceCard(parent,item) { const card=node(parent,'article','', 'card'); node(card,'h3',`${item.skill_id} · ${levels[item.level]}`); node(card,'p',item.description); node(card,'p',`来源：${item.source}`,'meta'); node(card,'p',`证据 ${item.evidence_id} · 输入验证标记：${item.verified?'true':'false'}（不是程序证明）`,'meta'); return card; }
+  function renderInput(data) {
+    const job=document.querySelector('#job'); job.replaceChildren(); node(job,'h3',data.job.title); node(job,'p',`案例 ${data.case_id} · 岗位 ${data.job.job_id}`,'meta');
+    for(const requirement of data.job.requirements){ const row=node(job,'div','','record'); node(row,'p',requirement.description); node(row,'p',`${requirement.requirement_id} · 技能 ${requirement.skill_id}`,'meta'); }
+    const source=document.querySelector('#source'); source.replaceChildren(); node(source,'p',`匿名候选人：${data.candidate.username}`); node(source,'p',`来源类型：${kindLabels[data.data_kind]||data.data_kind}`,'meta'); if(data.notice)node(source,'p',data.notice);
+    for(const [kind,fields] of Object.entries(data.source_metadata||{})){node(source,'h3',kind==='jd'?'岗位来源声明':'简历来源声明'); for(const [key,value] of Object.entries(fields)){const displayed=value===null?'未提供':typeof value==='boolean'?(value?'记录标为已核实（输入声明）':'尚未核实'):key==='kind'?(kindLabels[value]||value):value;node(source,'p',`${sourceLabels[key]||key}：${displayed}`,'meta');}}
+    const qualifications=document.querySelector('#qualifications'); qualifications.replaceChildren();
+    for(const item of data.qualifications||[]){const row=node(qualifications,'div','','record'); node(row,'p',`要求：${item.required}`); node(row,'p',`声明：${item.declared}（待核实）`); node(row,'p',`来源：${item.source}`,'meta'); node(row,'p',item.note,'meta');}
+    if(!(data.qualifications||[]).length)node(qualifications,'p','未提供资格声明。');
+    const evidence=document.querySelector('#evidence'); evidence.replaceChildren(); for(const item of data.candidate.evidence)evidenceCard(evidence,item); if(!data.candidate.evidence.length)node(evidence,'p','未提供证据，不等于现实中没有能力。');
+  }
+  async function loadCase() {
+    if(loadButton.disabled)return; loadButton.disabled=true; runButton.disabled=true; snapshot=null; input.hidden=true; result.hidden=true; outcome.hidden=true; status.textContent='正在加载资料快照…';
+    try { const data=await request('/private/case'); if(!data||!text(data.snapshot_id)||!/^[a-f0-9]{64}$/.test(data.snapshot_id)||!validCase(data.case))throw new Error(); renderInput(data.case); snapshot=data; input.hidden=false; status.textContent=`已加载 ${data.case.job.requirements.length} 项要求、${data.case.candidate.evidence.length} 条证据；点击分析这份资料。`; }
+    catch(error){status.textContent=error instanceof ViewerError?error.message:'资料格式异常，请检查脱敏文件后重启服务。';}
+    finally {loadButton.disabled=false;runButton.disabled=!snapshot;}
+  }
+  function validateReport(data) {
+    const report=data&&data.report;
+    if(!report||data.snapshot_id!==snapshot.snapshot_id||!same(report.case,snapshot.case)||report.execution_status!=='completed'||report.analysis_mode!=='offline_deterministic'||report.model_generated!==false||!Array.isArray(report.matches)||!Array.isArray(report.trusted_facts)||report.matches.length!==snapshot.case.job.requirements.length||report.trusted_facts.length!==report.matches.length||!Array.isArray(report.limitations))throw new Error();
+    for(let index=0;index<report.matches.length;index++){
+      const match=report.matches[index], requirement=snapshot.case.job.requirements[index];
+      if(!match||!Object.hasOwn(labels,match.status))throw new Error();
+      const related=snapshot.case.candidate.evidence.filter(item=>item.skill_id===requirement.skill_id);
+      if(!same(match,{...requirement,status:match.status,related_evidence_ids:related.map(item=>item.evidence_id)}))throw new Error();
+      const fact={requirement_id:requirement.requirement_id,skill_id:requirement.skill_id,status:match.status,related_evidence_ids:related.map(item=>item.evidence_id),verified_evidence_ids:related.filter(item=>item.verified).map(item=>item.evidence_id),unverified_evidence_ids:related.filter(item=>!item.verified).map(item=>item.evidence_id),origin:'python_deterministic_match'};
+      if(!same(report.trusted_facts[index],fact))throw new Error();
+    }
+    const verification=report.verification, expected=snapshot.case.expected;
+    if(!verification||verification.applicable!==Boolean(expected))throw new Error();
+    if(!expected){if(verification.passed!==null||verification.scope!=='not_configured')throw new Error();}
+    else {const states=report.matches.map(item=>({requirement_id:item.requirement_id,status:item.status})); if(typeof verification.passed!=='boolean'||verification.scope!=='execution_matches_and_trusted_facts'||verification.passed!==same(states,expected.states))throw new Error();}
+    return report;
+  }
+  function renderReport(report) {
+    const evidenceById=new Map(snapshot.case.candidate.evidence.map(item=>[item.evidence_id,item]));
+    const matches=document.querySelector('#matches'); matches.replaceChildren(); const used=new Set();
+    report.matches.forEach((match,index)=>{const card=node(matches,'article','',`panel match ${match.status}`); node(card,'span',labels[match.status],'badge'); node(card,'h3',match.description); node(card,'p',`${match.requirement_id} · 技能 ${match.skill_id}`,'meta');
+      if(!match.related_evidence_ids.length)node(card,'p','没有相同技能 ID 的证据；不是现实能力否定。');
+      for(const id of match.related_evidence_ids){used.add(id);evidenceCard(card,evidenceById.get(id));}
+      const details=node(card,'details','');node(details,'summary','查看可信事实字段');node(details,'pre',JSON.stringify(report.trusted_facts[index],null,2));});
+    const other=document.querySelector('#other');other.replaceChildren();for(const item of snapshot.case.candidate.evidence)if(!used.has(item.evidence_id))evidenceCard(other,item);if(used.size===evidenceById.size)node(other,'p','所有证据均已关联。');
+    document.querySelector('#execution').textContent='分析执行：完成；使用上方同一份资料，未调用模型、未修改文件。';
+    const verification=document.querySelector('#verification'); verification.textContent=!report.verification.applicable?'案例预设核对：未核对，未配置人工预设。':report.verification.passed?'案例预设核对：通过，完整匹配与可信事实符合预设。':'案例预设核对：未通过，实际结果偏离预设。';verification.className=report.verification.passed===true?'pass':'fail';
+    const counts=document.querySelector('#counts');counts.replaceChildren();for(const [state,label]of Object.entries(labels))node(counts,'span',`${label} ${report.matches.filter(item=>item.status===state).length}`,'chip');
+    const limits=document.querySelector('#limits');limits.replaceChildren();for(const item of report.limitations)node(limits,'p',item);
+  }
+  async function runCase() {
+    if(runButton.disabled||!snapshot)return;runButton.disabled=true;loadButton.disabled=true;result.hidden=true;outcome.hidden=true;status.textContent='正在分析同一份资料并核对预设…';
+    try { const data=await request('/private/analyses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snapshot_id:snapshot.snapshot_id})});const report=validateReport(data);renderReport(report);result.hidden=false;outcome.hidden=false;status.textContent='分析已完成。请按每项要求查看关联证据，而不是只看通过字样。'; }
+    catch(error){result.hidden=true;outcome.hidden=true;status.textContent=error instanceof ViewerError?error.message:'结果与资料快照不一致或格式异常；未展示结果，请重新加载后重试。';}
+    finally {runButton.disabled=!snapshot;loadButton.disabled=false;}
+  }
+  loadButton.addEventListener('click',loadCase);runButton.addEventListener('click',runCase);const initialLoad=loadCase();
+</script>
+</body></html>

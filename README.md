@@ -12,6 +12,7 @@ V1.6 定位为“输入、证据与判定过程演示”：模拟案例和历史
 - 当前公开版本范围：[`docs/PROJECT_SCOPE.md`](docs/PROJECT_SCOPE.md)
 - 版本演进与历史验证证据：[`docs/CAREER_AGENT_HISTORY.md`](docs/CAREER_AGENT_HISTORY.md)
 - 项目主张、代码证据与面试讲解：[`docs/PROJECT_EVIDENCE.md`](docs/PROJECT_EVIDENCE.md)
+- 手工脱敏 JSON 的本机私有入口及独立资料页面：[`docs/PRIVATE_CASES.md`](docs/PRIVATE_CASES.md)；不让原演示页读取私人文件，不解析原始 PDF。
 
 ## 当前功能
 
@@ -166,7 +167,9 @@ Invoke-RestMethod `
 node --test test_demo_page.cjs
 ```
 
-这组测试覆盖历史资料完整展示与视图隔离、分组遗漏、读取失败重试、后续案例异常、预设替换、可信事实缺失、矛盾拒绝报告、案例切换、超时和文本安全呈现；测试会通过项目虚拟环境读取后端输出。它不属于 Python 的 195 项测试，也不能代替真实浏览器验收。运行应用和 Python 测试无需 Node.js，无需安装额外 npm 包。
+这组测试覆盖历史资料完整展示与视图隔离、分组遗漏、读取失败重试、后续案例异常、预设替换、可信事实缺失、矛盾拒绝报告、案例切换、超时和文本安全呈现；测试会通过项目虚拟环境读取后端输出。它独立于 Python 回归测试，也不能代替真实浏览器验收。运行应用和 Python 测试无需 Node.js，无需安装额外 npm 包。
+
+本机私有入口另有 23 项终端入口和 22 项私有服务测试，包含这些入口的完整 Python 回归为 240 项；私有页面另有 13 项脚本测试，与原演示页的 30 项合计 43 项。测试只使用人工资料，不依赖个人简历或私有案例；运行方法及隐私边界见[私有案例说明](docs/PRIVATE_CASES.md)。独立私有页面不改变原演示页或原 API 的数据范围，没有身份验证，不用于公网或共享电脑。
 
 运行 V1.2 脱敏离线评估集：
 
