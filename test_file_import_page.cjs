@@ -10,8 +10,9 @@ const fixture={format:'txt',segments:[{location:'第 1 行',text:'虚构 Python 
 function element(){return {children:[],textContent:'',hidden:false,disabled:false,value:'',files:[],append(...items){this.children.push(...items);},replaceChildren(){this.children=[];},addEventListener(event,handler){this[event]=handler;}};}
 function ok(data=fixture){return {ok:true,status:200,json:async()=>structuredClone(data)};}
 function mount(fetchImpl=async()=>ok(),modelEnabled=false){
-  const nodes=Object.fromEntries(['#file','#extract','#clear','#preview','#status','#segments','#warnings','#review','#confirm','#format-mode','#model-options','#text-kind','#additional','#data-kind','#case-id','#model-consent','#format-json','#format-status','#json-result','#json-draft','#json-status','#validate-json','#model-availability'].map(id=>[id,element()]));
+  const nodes=Object.fromEntries(['#file','#extract','#clear','#preview','#status','#segments','#warnings','#review','#confirm','#format-mode','#model-options','#text-kind','#additional','#data-kind','#case-id','#model-consent','#format-json','#format-status','#json-result','#json-draft','#json-status','#validate-json','#model-availability','#regenerate-warning','#regenerate-confirm','#regenerate-cancel','#json-completeness-status','#json-sections'].map(id=>[id,element()]));
   nodes['#preview'].hidden=true;
+  nodes['#regenerate-warning'].hidden=true;
   nodes['#format-mode'].value='text';nodes['#text-kind'].value='resume';nodes['#data-kind'].value='synthetic_private_test';nodes['#case-id'].value='formatted_draft';nodes['#model-consent'].checked=false;nodes['#model-options'].hidden=true;nodes['#json-result'].hidden=true;
   const timers=new Map();let next=0;
   vm.runInNewContext(script.replace('const MODEL_ENABLED=false;',`const MODEL_ENABLED=${modelEnabled};`),{document:{querySelector:id=>nodes[id],createElement:element},AbortController,
@@ -19,6 +20,8 @@ function mount(fetchImpl=async()=>ok(),modelEnabled=false){
   const view={nodes,timers,choose(name='synthetic.txt',size=25){nodes['#file'].files=[{name,size}];nodes['#file'].change();},run:()=>nodes['#extract'].click(),clear:()=>nodes['#clear'].click(),confirm:()=>nodes['#confirm'].click(),format:()=>nodes['#format-json'].click(),validate:()=>nodes['#validate-json'].click(),enable(){nodes['#format-mode'].value='model';nodes['#format-mode'].change();view.confirm();nodes['#model-consent'].checked=true;nodes['#model-consent'].change();},expire(){assert.equal(timers.size,1);[...timers.values()][0]();}};
   return view;
 }
+function approveAgain(view){assert.equal(view.nodes['#regenerate-warning'].hidden,false);return view.nodes['#regenerate-confirm'].click();}
+async function flushPromises(){for(let i=0;i<10;i++)await Promise.resolve();}
 function ready(view){assert.equal(view.nodes['#extract'].disabled,false);assert.equal(view.timers.size,0);}
 
 test('选择文件不自动传输，原文与草稿分开展示，无能力验证',async()=>{
@@ -121,7 +124,7 @@ test('修改主要校对文字撤销旧外发同意；重新校对仍需重新�
   const editor=view.nodes['#segments'].children[0].children[3];editor.value='新的脱敏校对文字';editor.input();
   assert.equal(view.nodes['#model-consent'].checked,false);assert.equal(view.nodes['#json-result'].hidden,true);
   view.confirm();await view.format();assert.equal(calls,1);
-  view.nodes['#model-consent'].checked=true;view.nodes['#model-consent'].change();await view.format();assert.equal(calls,2);
+  view.nodes['#model-consent'].checked=true;view.nodes['#model-consent'].change();await view.format();assert.equal(calls,1);await approveAgain(view);assert.equal(calls,2);
 });
 test('完整 JSON 仍仅为结构通过，无分析或保存',async()=>{
   const data=structuredClone(jsonFixture);data.draft.job={job_id:'draft_job',title:'模拟岗位',requirements:[{requirement_id:'req_001',skill_id:'python',description:'模拟要求',category:'required',priority:2}]};data.schema_valid=true;data.missing_sections=[];
@@ -162,7 +165,7 @@ test('模型结果多字段、错误缺项标记和假已保存均拒绝',async(
   }
 });
 test('模型请求失败隐藏旧 JSON，不显示异常正文，可重试',async()=>{
-  let call=0;const view=await modelView(async()=>++call===2?{ok:false,status:503,json(){throw new Error('private-key');}}:ok(jsonFixture));view.enable();await view.format();await view.format();assert.equal(view.nodes['#json-result'].hidden,true);assert.match(view.nodes['#format-status'].textContent,/密钥/);assert.doesNotMatch(view.nodes['#format-status'].textContent,/private-key/);await view.format();assert.equal(view.nodes['#json-result'].hidden,false);
+  let call=0;const view=await modelView(async()=>++call===2?{ok:false,status:503,json(){throw new Error('private-key');}}:ok(jsonFixture));view.enable();await view.format();await view.format();await approveAgain(view);assert.equal(view.nodes['#json-result'].hidden,true);assert.match(view.nodes['#format-status'].textContent,/密钥/);assert.doesNotMatch(view.nodes['#format-status'].textContent,/private-key/);await view.format();await approveAgain(view);assert.equal(view.nodes['#json-result'].hidden,false);
 });
 test('取消模型整理或修改文字，晚返回 JSON 不恢复旧结果',async()=>{
   for(const action of ['clear','edit']){
@@ -178,4 +181,93 @@ for(const phase of ['fetch','json'])test(`模型 ${phase} 超时不给假成功�
 });
 test('校对文本超限或非法匿名标识不发送模型请求',async()=>{
   let calls=0;const view=await modelView(async()=>{calls++;return ok(jsonFixture);});view.enable();view.nodes['#case-id'].value='个人姓名';await view.format();view.nodes['#case-id'].value='draft_case';view.nodes['#segments'].children[0].children[3].value='x'.repeat(12001);await view.format();assert.equal(calls,0);assert.match(view.nodes['#format-status'].textContent,/12000/);
+});
+
+test('JSON 编辑区域加高、等宽且可调整，不影响正文校对框',()=>{
+  assert.match(page,/#json-draft\{min-height:480px;[^}]*Consolas[^}]*monospace;resize:vertical/);
+  assert.match(page,/@media\(max-width:600px\)\{#json-draft\{min-height:360px/);
+  assert.match(page,/textarea\{[^}]*system-ui,sans-serif/);
+});
+test('每个必需部分单独列出，null 缺项不宣称完整',async()=>{
+  for(const missing of [['job'],['candidate'],['job','candidate'],[]]){
+    const data=structuredClone(jsonFixture);
+    data.draft.job=missing.includes('job')?null:{job_id:'draft_job',title:'模拟岗位',requirements:[{requirement_id:'req_001',skill_id:'python',description:'模拟要求',category:'required',priority:2}]};
+    if(missing.includes('candidate'))data.draft.candidate=null;
+    data.missing_sections=missing;data.schema_valid=missing.length===0;
+    const view=await modelView(async()=>ok(data));view.enable();await view.format();
+    const rows=view.nodes['#json-sections'].children.map(item=>item.textContent);
+    assert.equal(rows.length,2);
+    assert.equal(rows.filter(row=>row.includes('缺少')).length,missing.length);
+    for(const key of missing)assert.ok(rows.some(row=>row.includes(key+' = null')));
+    assert.match(view.nodes['#json-completeness-status'].textContent,missing.length?/暂不能用于分析/:/仅结构通过.*待核实/);
+  }
+});
+test('编辑、语法错误及字段失败清除旧缺项结论，不清除可修改 JSON',async()=>{
+  const view=await modelView(async(url)=>url==='/imports/format-json'?ok(jsonFixture):{ok:false,status:422,json:async()=>({error_code:'json'})});
+  view.enable();await view.format();assert.equal(view.nodes['#json-sections'].children.length,2);
+  view.nodes['#json-draft'].value='{broken';view.nodes['#json-draft'].input();await view.validate();
+  assert.equal(view.nodes['#json-sections'].children.length,0);assert.match(view.nodes['#json-completeness-status'].textContent,/待确认/);
+  view.nodes['#json-draft'].value=JSON.stringify(jsonFixture.draft);await view.validate();
+  assert.equal(view.nodes['#json-sections'].children.length,0);assert.match(view.nodes['#json-status'].textContent,/字段检查未通过/);
+  assert.equal(view.nodes['#json-result'].hidden,false);
+});
+test('本地重新校验更新缺项展示，不调用模型或弹出收费确认',async()=>{
+  const calls=[];const view=await modelView(async(url,options)=>{
+    calls.push(url);if(url==='/imports/format-json')return ok(jsonFixture);
+    return ok({draft:JSON.parse(options.body).draft,missing_sections:['job','candidate'],schema_valid:false,verification:'unverified',analysis_performed:false,saved:false});
+  });
+  view.enable();await view.format();const value=structuredClone(jsonFixture.draft);value.candidate=null;
+  view.nodes['#json-draft'].value=JSON.stringify(value);view.nodes['#json-draft'].input();await view.validate();
+  assert.equal(view.nodes['#json-sections'].children.filter(row=>row.textContent.includes('缺少')).length,2);
+  assert.deepEqual(calls,['/imports/format-json','/imports/validate-json']);assert.equal(view.nodes['#regenerate-warning'].hidden,true);
+});
+test('固定类别区分隐私、输入字段、JSON 字段、模型引用与输出结构，不回显正文',async()=>{
+  for(const [code,pattern] of [['privacy',/隐私检查/],['input',/请求字段检查/],['json',/JSON 字段检查/],['quote',/模型引用检查/],['output',/模型结果字段或结构/]]){
+    const view=await modelView(async()=>({ok:false,status:422,json:async()=>({error_code:code,detail:'private-key original-text'})}));
+    view.enable();await view.format();assert.match(view.nodes['#format-status'].textContent,pattern);
+    assert.doesNotMatch(view.nodes['#format-status'].textContent,/private-key|original-text/);assert.equal(view.nodes['#json-result'].hidden,true);
+  }
+});
+test('未知类别、危险键、状态不符及非法正文均降级为固定提示',async()=>{
+  for(const body of [{error_code:'private-key'},{error_code:'__proto__'},{error_code:'toString'},{error_code:'model'},null,'original-text']){
+    const view=await modelView(async()=>({ok:false,status:422,json:async()=>body}));view.enable();await view.format();
+    assert.match(view.nodes['#format-status'].textContent,/可识别的错误类别/);assert.doesNotMatch(view.nodes['#format-status'].textContent,/private-key|original-text|__proto__/);
+  }
+});
+test('错误正文读取同样受 45 秒限制且不泄露读取异常',async()=>{
+  const view=await modelView(async(url,options)=>({ok:false,status:422,json:()=>new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('private-key'))))}));
+  view.enable();const pending=view.format();await flushPromises();view.expire();await pending;
+  assert.match(view.nodes['#format-status'].textContent,/45 秒.*用量/);assert.doesNotMatch(view.nodes['#format-status'].textContent,/private-key/);assert.equal(view.timers.size,0);
+});
+test('取消后错误正文晚返回不污染新页面',async()=>{
+  let complete;const view=await modelView(async()=>({ok:false,status:422,json:()=>new Promise(resolve=>{complete=resolve;})}));
+  view.enable();const pending=view.format();await flushPromises();view.clear();complete({error_code:'privacy'});await pending;
+  assert.equal(view.nodes['#format-status'].textContent,'');assert.equal(view.nodes['#preview'].hidden,true);
+});
+test('成功后再次点击只提示费用，取消保留手动 JSON 且不外发',async()=>{
+  let calls=0;const view=await modelView(async()=>{calls++;return ok(jsonFixture);});view.enable();await view.format();
+  view.nodes['#json-draft'].value+='\n';view.nodes['#json-draft'].input();const old=view.nodes['#json-draft'].value;
+  await view.format();await view.format();assert.equal(calls,1);assert.equal(view.nodes['#json-draft'].value,old);assert.equal(view.nodes['#json-result'].hidden,false);
+  assert.match(page,/可能再次产生 API 费用.*替换当前 JSON 草稿/);
+  view.nodes['#regenerate-cancel'].click();assert.equal(view.nodes['#regenerate-warning'].hidden,true);assert.equal(view.nodes['#json-draft'].value,old);assert.equal(calls,1);
+  assert.match(view.nodes['#format-status'].textContent,/未发起新的模型请求/);
+});
+test('明确再次生成仅发出一次请求，再次成功仍需要费用确认',async()=>{
+  let calls=0,complete;const view=await modelView(async()=>++calls===1?ok(jsonFixture):new Promise(resolve=>{complete=resolve;}));
+  view.enable();await view.format();await view.format();const pending=approveAgain(view);await view.nodes['#regenerate-confirm'].click();await view.format();assert.equal(calls,2);
+  complete(ok(jsonFixture));await pending;await view.format();assert.equal(calls,2);assert.equal(view.nodes['#regenerate-warning'].hidden,false);assert.equal(view.timers.size,0);
+});
+test('待确认期间修改文字或 JSON、撤销同意及清空，旧确认均不能发送',async()=>{
+  for(const action of ['text','json','consent','clear']){
+    let calls=0;const view=await modelView(async()=>{calls++;return ok(jsonFixture);});view.enable();await view.format();await view.format();
+    if(action==='text')view.nodes['#segments'].children[0].children[3].input();
+    if(action==='json')view.nodes['#json-draft'].input();
+    if(action==='consent'){view.nodes['#model-consent'].checked=false;view.nodes['#model-consent'].change();}
+    if(action==='clear')view.clear();
+    assert.equal(view.nodes['#regenerate-warning'].hidden,true);await view.nodes['#regenerate-confirm'].click();assert.equal(calls,1);
+  }
+});
+test('换文件后首次生成不沿用旧收费确认状态',async()=>{
+  let calls=0;const view=await modelView(async()=>{calls++;return ok(jsonFixture);});view.enable();await view.format();await view.format();
+  view.choose('new.txt');await view.run();view.enable();await view.format();assert.equal(calls,2);assert.equal(view.nodes['#regenerate-warning'].hidden,true);
 });

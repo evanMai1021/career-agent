@@ -24,11 +24,12 @@ MAX_FORMAT_BODY = 256 * 1024
 FORMAT_NOTICE = "模型根据人工校对文字整理，尚未核实；字段、技能映射、层级及优先级须人工复核。"
 FORMAT_ERRORS = {
     "input": "请先校对、脱敏并确认发送；文本或字段不符合格式化约定。",
-    "privacy": "文本命中常见敏感信息格式，请先脱敏；未发送给模型。",
+    "privacy": "当前文字或 JSON 命中常见敏感信息格式，请先脱敏后再操作。",
     "model": "模型整理未完成，请检查本地密钥、网络或模型兼容性后重试。",
     "timeout": "模型请求超时；未自动重试，请核对用量后再操作。",
-    "output": "模型结果不符合约定或引用不在校对文字中；未展示为可用 JSON。",
-    "json": "JSON 草稿不符合字段约定、含敏感信息或试图升级验证标记。",
+    "output": "模型结果的字段或结构不符合约定；未展示为可用 JSON。",
+    "quote": "模型引用检查未通过：摘录未出现在对应角色的校对文字中；未展示为可用 JSON。",
+    "json": "JSON 草稿字段检查未通过：请检查字段、类型和待核实标记。",
 }
 
 
@@ -160,7 +161,7 @@ def validate_draft(draft):
             raise ValueError()
         _validate_text_safety(draft)
         if find_sensitive_kinds(draft):
-            raise ValueError()
+            raise FormatError("privacy")
         missing = [name for name in ("job", "candidate") if draft[name] is None]
         if draft["job"] is not None and validate_job(draft["job"]):
             raise ValueError()
@@ -184,6 +185,8 @@ def validate_draft(draft):
             raise ValueError()
         if draft["candidate"] is not None and len(draft["candidate"]["evidence"]) > 60:
             raise ValueError()
+    except FormatError:
+        raise
     except (ValueError, TypeError, KeyError, RecursionError, AttributeError):
         raise FormatError("json") from None
     return {"draft":deepcopy(draft), "schema_valid":not missing, "missing_sections":missing,
@@ -202,7 +205,7 @@ def _build_draft(proposal, request):
         for label, content in parts:
             if text.strip() and text in content:
                 return label
-        raise FormatError("output")
+        raise FormatError("quote")
 
     draft = {"case_id":request.case_id, "data_kind":request.data_kind, "notice":FORMAT_NOTICE,
              "job":None, "candidate":None, "qualifications":[]}

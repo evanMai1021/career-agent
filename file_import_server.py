@@ -105,7 +105,11 @@ def create_import_app(*, port=8002, enable_model_format=False):
         except (TimeoutError,ClientDisconnect):
             raise HTTPException(status_code=408,detail="请求传输未完成，请重试。") from None
         except (UnicodeError,FormatError):
-            raise HTTPException(status_code=422,detail="JSON 请求格式无效。") from None
+            raise FormatError("input") from None
+
+    def format_error_response(error):
+        status = 503 if error.code == "model" else 408 if error.code == "timeout" else 422
+        return JSONResponse({"detail":str(error), "error_code":error.code}, status_code=status)
 
     @app.post("/imports/format-json")
     async def format_json(request: Request):
@@ -114,22 +118,21 @@ def create_import_app(*, port=8002, enable_model_format=False):
         if busy.locked():
             raise HTTPException(status_code=503,detail="已有操作正在处理，请稍后重试。")
         async with busy:
-            payload = await read_payload(request)
             try:
+                payload = await read_payload(request)
                 return await run_in_threadpool(format_corrected_text,payload)
             except FormatError as error:
-                status = 503 if error.code == "model" else 408 if error.code == "timeout" else 422
-                raise HTTPException(status_code=status,detail=str(error)) from None
+                return format_error_response(error)
 
     @app.post("/imports/validate-json")
     async def validate_json(request: Request):
-        payload = await read_payload(request)
         try:
+            payload = await read_payload(request)
             if not isinstance(payload,dict) or set(payload) != {"draft"}:
                 raise FormatError("json")
             return validate_draft(payload["draft"])
         except FormatError as error:
-            raise HTTPException(status_code=422,detail=str(error)) from None
+            return format_error_response(error)
 
     return app
 

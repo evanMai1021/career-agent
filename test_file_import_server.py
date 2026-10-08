@@ -190,11 +190,47 @@ class ImportServerTests(unittest.TestCase):
     def test_formatter_errors_are_fixed_and_headers_preserved(self):
         from text_json_formatter import FormatError
         enabled=TestClient(create_import_app(enable_model_format=True),base_url='http://127.0.0.1:8002',client=('127.0.0.1',50000))
-        for code,status in [('model',503),('output',422),('timeout',408)]:
+        for code,status in [('model',503),('output',422),('quote',422),('privacy',422),('input',422),('json',422),('timeout',408)]:
             with patch('file_import_server.format_corrected_text',side_effect=FormatError(code)):
                 response=enabled.post('/imports/format-json',headers={**HEADERS,'Content-Type':'application/json'},json=format_payload())
                 self.assertEqual(response.status_code,status)
+                self.assertEqual(response.json()['error_code'],code)
+                self.assertEqual(set(response.json()),{'detail','error_code'})
                 self.assertEqual(response.headers['cache-control'],'no-store')
+
+    def test_actual_error_categories_without_leaking_input_or_calling_model(self):
+        from text_json_formatter import format_corrected_text
+        enabled=TestClient(create_import_app(enable_model_format=True),base_url='http://127.0.0.1:8002',client=('127.0.0.1',50000))
+        headers={**HEADERS,'Content-Type':'application/json'}
+        draft=format_corrected_text(format_payload(),client_factory=lambda:stub_client())['draft']
+        with patch('text_json_formatter.create_qwen_client') as factory:
+            for key,bad,code in [('additional_text','demo-private@example.com','privacy'),('consent',False,'input')]:
+                value=format_payload();value[key]=bad
+                response=enabled.post('/imports/format-json',headers=headers,json=value)
+                self.assertEqual(response.status_code,422)
+                self.assertEqual(response.json()['error_code'],code)
+                self.assertNotIn('example.com',response.text)
+            response=self.client.post('/imports/validate-json',headers=headers,content=b'{"draft":{},"draft":{}}')
+            self.assertEqual(response.json()['error_code'],'input')
+            draft['notice']='demo-private@example.com'
+            response=self.client.post('/imports/validate-json',headers=headers,json={'draft':draft})
+            self.assertEqual(response.json()['error_code'],'privacy')
+            self.assertNotIn('example.com',response.text)
+            draft['notice']='待核实';draft['candidate']['evidence'][0]['verified']=True
+            response=self.client.post('/imports/validate-json',headers=headers,json={'draft':draft})
+            self.assertEqual(response.json()['error_code'],'json')
+        factory.assert_not_called()
+
+    def test_real_quote_check_with_stub_has_separate_safe_code(self):
+        from test_text_json_formatter import proposal
+        value=proposal();value['candidate']['evidence'][0]['description']='not-in-current-input'
+        enabled=TestClient(create_import_app(enable_model_format=True),base_url='http://127.0.0.1:8002',client=('127.0.0.1',50000))
+        with patch('text_json_formatter.create_qwen_client',return_value=stub_client(value)):
+            response=enabled.post('/imports/format-json',headers={**HEADERS,'Content-Type':'application/json'},json=format_payload())
+        self.assertEqual(response.status_code,422)
+        self.assertEqual(response.json()['error_code'],'quote')
+        self.assertNotIn('not-in-current-input',response.text)
+        self.assertEqual(response.headers['cache-control'],'no-store')
 
     def test_raw_edited_json_rejects_duplicate_keys_and_nonfinite_numbers(self):
         from text_json_formatter import format_corrected_text

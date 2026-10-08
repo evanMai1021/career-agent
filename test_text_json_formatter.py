@@ -135,7 +135,20 @@ class FormatterTests(unittest.TestCase):
         output=proposal();output['candidate']['evidence'][0]['description']='独立部署 Java 生产系统'
         with self.assertRaises(FormatError) as caught:
             format_corrected_text(payload(),client_factory=lambda:stub_client(output))
-        self.assertEqual(caught.exception.code,'output')
+        self.assertEqual(caught.exception.code,'quote')
+        self.assertNotIn('独立部署',str(caught.exception))
+
+    def test_local_json_privacy_and_field_errors_are_distinct_and_fixed(self):
+        draft=format_corrected_text(payload(),client_factory=lambda:stub_client())['draft']
+        for change,code in [(lambda value:value.update(notice='demo-private@example.com'),'privacy'),
+                            (lambda value:value['candidate']['evidence'][0].update(verified=True),'json')]:
+            value=deepcopy(draft);change(value)
+            with patch('text_json_formatter.create_qwen_client') as factory:
+                with self.assertRaises(FormatError) as caught:
+                    validate_draft(value)
+                self.assertEqual(caught.exception.code,code)
+                self.assertNotIn('example.com',str(caught.exception))
+            factory.assert_not_called()
 
     def test_invalid_priority_levels_and_sensitive_output_rejected(self):
         for field,bad in [('priority',True),('priority','2'),('priority',4),('category',[]),('description','demo-private@example.com')]:
