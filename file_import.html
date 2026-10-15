@@ -56,6 +56,7 @@ body{margin:0;background:#f3f7fa;color:#17354c;font:16px/1.65 system-ui,sans-ser
 <label for="json-draft">JSON 草稿（可以继续修改）</label><textarea id="json-draft" spellcheck="false"></textarea>
 <button id="validate-json" type="button" aria-describedby="validate-help">仅校验当前 JSON（不调用模型）</button><p id="json-status" role="status"></p>
 <ul id="field-errors" aria-label="JSON 字段修正提示" hidden></ul>
+<p id="field-location-status" role="status" aria-live="polite"></p>
 <small>字段路径中的数组下标从 0 开始，例如 [1] 是第 2 项。最多显示 8 项定位；未列出不代表其他字段有效，仍以完整校验结果为准。</small>
 <p>不自动保存或分析。完整草稿经“仅校验”通过后，可确认使用当前 JSON 在本页分析，无须保存文件或重启。任何修改都会撤销分析确认和旧结果；原分析页的启动快照不变。</p>
 <h2>5. 使用当前草稿进行本机分析</h2>
@@ -63,7 +64,11 @@ body{margin:0;background:#f3f7fa;color:#17354c;font:16px/1.65 system-ui,sans-ser
 <label><input id="analysis-consent" type="checkbox" disabled>我已逐项复核当前 JSON，确认用它分析；理解内容仍待核实。</label>
 <button id="analyse-json" type="button" disabled aria-describedby="analyse-help">确认并分析当前草稿（本机，不调用模型）</button>
 <p id="analysis-status" role="status" aria-live="polite">请先仅校验完整的当前 JSON，再确认分析。</p>
-<div id="analysis-result" hidden><h3 id="analysis-summary"></h3><p id="analysis-counts"></p><p>trusted_facts（可信事实）仅记录规则判定与关联证据 ID，不证明输入声明真实；此草稿没有人工预设可核对。</p><div id="analysis-matches"></div><h3>未关联本次要求的其他证据</h3><div id="analysis-other"></div><h3>资格声明（不参与技能匹配）</h3><div id="analysis-qualifications"></div><div id="analysis-limits"></div></div>
+<div id="analysis-result" hidden><h3 id="analysis-summary"></h3><p id="analysis-counts"></p><p>trusted_facts（可信事实）仅记录规则判定与关联证据 ID，不证明输入声明真实；此草稿没有人工预设可核对。</p>
+<label for="analysis-filter">筛选要求卡片</label><select id="analysis-filter" disabled><option value="all">全部要求</option><option value="unverified">待核实</option><option value="missing">缺少证据</option></select>
+<p id="filter-status" role="status" aria-live="polite"></p><p id="filter-empty" hidden>当前筛选下没有要求，请切换筛选查看其他状态。</p>
+<small>仅隐藏要求卡片；上方始终统计全部要求，其他证据与资格声明不受筛选影响。每张卡片仍可展开原 trusted_facts，切回“全部要求”查看全量。</small>
+<div id="analysis-matches"></div><h3>未关联本次要求的其他证据</h3><div id="analysis-other"></div><h3>资格声明（不参与技能匹配）</h3><div id="analysis-qualifications"></div><div id="analysis-limits"></div></div>
 </div>
 <p>刷新、清空或关闭会丢失本页草稿。“校对确认”“JSON 结构通过”都不等于能力或来源核实。</p>
 </section>
@@ -83,8 +88,20 @@ let formatActive=null,formatGeneration=0,reviewed=false;
 let hasGenerated=false;
 const analysisConsent=document.querySelector('#analysis-consent'),analyseButton=document.querySelector('#analyse-json'),analysisStatus=document.querySelector('#analysis-status'),analysisResult=document.querySelector('#analysis-result');
 let validatedRaw=null,analysisActive=null,analysisGeneration=0;
-const fieldErrors=document.querySelector('#field-errors');
-function clearFieldErrors(){fieldErrors.replaceChildren();fieldErrors.hidden=true;}
+const fieldErrors=document.querySelector('#field-errors'),fieldLocationStatus=document.querySelector('#field-location-status');
+let fieldHintGeneration=0;
+const analysisFilter=document.querySelector('#analysis-filter'),filterStatus=document.querySelector('#filter-status'),filterEmpty=document.querySelector('#filter-empty');
+let analysisRows=[];
+function clearFieldErrors(){fieldHintGeneration++;fieldErrors.replaceChildren();fieldErrors.hidden=true;fieldLocationStatus.textContent='';}
+function resetAnalysisFilter(){analysisRows=[];analysisFilter.value='all';analysisFilter.disabled=true;filterStatus.textContent='';filterEmpty.hidden=true;}
+function applyAnalysisFilter(){
+  if(analysisResult.hidden||validatedRaw===null||validatedRaw!==jsonDraft.value)return;
+  const selected=['all','unverified','missing'].includes(analysisFilter.value)?analysisFilter.value:'all';analysisFilter.value=selected;
+  let visible=0;for(const {card,status} of analysisRows){card.hidden=selected!=='all'&&status!==selected;if(!card.hidden)visible++;}
+  filterStatus.textContent=`全量要求 ${analysisRows.length} 项；当前显示 ${visible} 项（${selected==='all'?'全部要求':stateLabels[selected]}）。`;
+  filterEmpty.hidden=visible!==0;
+}
+analysisFilter.addEventListener('change',applyAnalysisFilter);
 function updateGuidance(){
   const busy=!!formatActive||!!analysisActive,complete=validatedRaw!==null&&validatedRaw===jsonDraft.value;
   const step=active?'1 · 正在提取，请等待或取消。':preview.hidden?'1 · 选择文件，然后点击提取。':analysisActive?'5 · 正在本机分析，请等待或撤销确认。':formatActive?(jsonResult.hidden?'3 · 正在整理 JSON；不要重复发送。':'4 · 正在本地校验当前 JSON。'):!regenerateWarning.hidden?'3 · 等待再次生成的费用及草稿替换确认。':!analysisResult.hidden?'5 · 分析结果已展示，声明仍待核实。':jsonResult.hidden?(reviewed?'3 · 可选模型整理；仅保留文字也可到此结束。':'2 · 请对照原文校对，再确认本页文字。'):!complete?'4 · 请核对／修正 JSON 后仅校验；若缺项先补齐。':!analysisConsent.checked?'5 · 完整复验通过，请人工复核并勾选分析确认。':'5 · 已确认，可以点击本机分析。';
@@ -94,7 +111,7 @@ function updateGuidance(){
   document.querySelector('#analyse-help').textContent='本机分析：'+(busy?'暂时禁用，等待当前操作完成或取消。':jsonResult.hidden?'不可用，尚无 JSON 草稿。':!complete?'不可用，须先完整复验当前 JSON，确认岗位和候选人齐全。':!analysisConsent.checked?'不可用，须先逐项复核并勾选分析确认。':'可点击分析，不调用模型、不保存或核实能力。');
 }
 function syncOperationButtons(){const busy=!!formatActive||!!analysisActive;formatButton.disabled=!MODEL_ENABLED||busy;validateButton.disabled=busy;analyseButton.disabled=busy||!analysisConsent.checked||validatedRaw===null||validatedRaw!==jsonDraft.value;updateGuidance();}
-function invalidateAnalysis(){analysisGeneration++;if(analysisActive){analysisActive.abort();analysisActive=null;}validatedRaw=null;analysisConsent.checked=false;analysisConsent.disabled=true;analysisResult.hidden=true;for(const id of ['#analysis-summary','#analysis-counts','#analysis-matches','#analysis-other','#analysis-qualifications','#analysis-limits']){const item=document.querySelector(id);item.textContent='';item.replaceChildren();}analysisStatus.textContent='请先仅校验完整的当前 JSON，再确认分析。';syncOperationButtons();}
+function invalidateAnalysis(){analysisGeneration++;if(analysisActive){analysisActive.abort();analysisActive=null;}validatedRaw=null;analysisConsent.checked=false;analysisConsent.disabled=true;analysisResult.hidden=true;resetAnalysisFilter();for(const id of ['#analysis-summary','#analysis-counts','#analysis-matches','#analysis-other','#analysis-qualifications','#analysis-limits']){const item=document.querySelector(id);item.textContent='';item.replaceChildren();}analysisStatus.textContent='请先仅校验完整的当前 JSON，再确认分析。';syncOperationButtons();}
 function resetCompleteness(){clearFieldErrors();invalidateAnalysis();completenessStatus.textContent='当前 JSON 尚未通过重新校验，缺项状态待确认。';jsonSections.replaceChildren();}
 function invalidateJson(){formatGeneration++;if(formatActive){formatActive.abort();formatActive=null;}regenerateWarning.hidden=true;formatButton.disabled=!MODEL_ENABLED;validateButton.disabled=false;jsonResult.hidden=true;jsonDraft.value='';jsonStatus.textContent='';formatStatus.textContent='';resetCompleteness();}
 function editsChanged(){reviewed=false;modelConsent.checked=false;invalidateJson();reviewNode.textContent='文字或设置已修改，请重新确认校对；声明仍待核实。';}
@@ -171,13 +188,58 @@ function formatErrorMessage(status,code){
   if(Object.hasOwn(known,code)&&known[code][0]===status)return known[code][1];
   return ({403:'模型整理未启用或访问被拒绝。',408:'模型或传输超时，请先核对 API 用量，再自行决定是否重试。',413:'请求超限，请减少文字量。',415:'请求类型检查未通过；请按本页约定操作。',422:'检查未通过，服务未提供可识别的错误类别；请检查脱敏文字、JSON 字段和引用。',503:'模型暂不可用或正在处理；请检查密钥、网络和兼容性，勿连续重试。'})[status]||'整理或校验失败，请检查后重试。';
 }
+// 以原始 UTF-16 偏移建立位置索引；不重排 JSON，不用字段名搜索猜测位置。
+function jsonSourceSpans(raw){
+  if(raw.length>120000)throw new Error('limit');
+  JSON.parse(raw);
+  const tokens=/\s*("(?:\\.|[^"\\])*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null|[{}\[\]:,])/gy;
+  let cursor=0;
+  const spans=new Map();
+  function next(){tokens.lastIndex=cursor;const match=tokens.exec(raw);if(!match)throw new Error('token');cursor=tokens.lastIndex;return {text:match[1],start:cursor-match[1].length,end:cursor};}
+  function expect(value){if(next().text!==value)throw new Error('token');}
+  function walk(path,depth){
+    if(depth>32)throw new Error('depth');
+    const first=next();let end=first.end;
+    if(first.text==='{'||first.text==='['){
+      const object=first.text==='{',close=object?'}':']',keys=new Set();let index=0;
+      const opening=cursor,look=next();
+      if(look.text===close)end=look.end;
+      else{
+        cursor=opening;
+        while(true){
+          let key=index++;
+          if(object){const token=next();if(!token.text.startsWith('"'))throw new Error('key');key=JSON.parse(token.text);if(keys.has(key))throw new Error('duplicate');keys.add(key);expect(':');}
+          walk([...path,key],depth+1);
+          const separator=next();if(separator.text===close){end=separator.end;break;}if(separator.text!==',')throw new Error('separator');
+        }
+      }
+    }else if(!first.text.startsWith('"')&&!['true','false','null'].includes(first.text)&&!Number.isFinite(Number(first.text)))throw new Error('number');
+    spans.set(JSON.stringify(path),{start:first.start,end});
+  }
+  walk([],0);if(raw.slice(cursor).trim())throw new Error('trailing');return spans;
+}
+function locateField(path,raw,token){
+  if(token!==fieldHintGeneration||fieldErrors.hidden||jsonResult.hidden||formatActive||analysisActive||raw!==jsonDraft.value)return;
+  try{
+    const spans=jsonSourceSpans(raw),parts=path==='draft'?[]:path.match(/[a-z_]+|[0-9]+/g).map(part=>/^[0-9]+$/.test(part)?Number(part):part);
+    let span=spans.get(JSON.stringify(parts)),parent=false;
+    while(!span&&parts.length){parts.pop();parent=true;span=spans.get(JSON.stringify(parts));}
+    if(!span)throw new Error('missing');
+    const prefix=raw.slice(0,span.start),lines=prefix.split('\n'),line=lines.length,column=Array.from(lines[lines.length-1]).length+1;
+    jsonDraft.focus();jsonDraft.setSelectionRange(span.start,span.end);jsonDraft.scrollIntoView({block:'center',behavior:'auto'});
+    const style=getComputedStyle(jsonDraft),lineHeight=parseFloat(style.lineHeight)||24,charWidth=(parseFloat(style.fontSize)||14)*0.6;
+    jsonDraft.scrollTop=Math.max(0,(line-1)*lineHeight-jsonDraft.clientHeight/3);jsonDraft.scrollLeft=Math.max(0,lines[lines.length-1].replace(/\t/g,'  ').length*charWidth-jsonDraft.clientWidth/3);
+    fieldLocationStatus.textContent=`${path}：${parent?'字段不存在，已定位到最近存在的父级':'已选中对应值'}（第 ${line} 行，第 ${column} 列）。仅定位，不改写内容，请修正后重新校验。`;
+  }catch(error){fieldLocationStatus.textContent='无法可靠定位：请检查 JSON 语法、重复键、数值或大小／嵌套限制后重新校验；未改写内容。';}
+}
 function showFieldErrors(status,body){
   clearFieldErrors();
   if(status!==422||!body||body.error_code!=='json'||!Array.isArray(body.field_errors)||body.field_errors.length>8)return;
   const reasons={object:'必须是对象',fields:'必需字段缺失或含未约定字段',text:'必须是非空文字',list:'列表类型或必需项目不符合约定',limit:'条目数量超过限制',identifier:'须使用约定的匿名标识',data_kind:'仅支持约定的两种来源类型',duplicate:'标识重复，请在当前列表内保持唯一',category:'仅支持 required（必需）或 preferred（加分）',priority:'必须是整数 1、2 或 3，不能是布尔值',level:'仅支持 learning、practice、project 或 production',false_only:'必须为 false，不能升级为已核实',unverified_only:'必须为 unverified（待核实）'};
   const allowed=/^(?:draft|case_id|data_kind|notice|job(?:\.(?:job_id|title|requirements(?:\[(?:[0-9]|[1-3][0-9])\](?:\.(?:requirement_id|skill_id|description|category|priority))?)?))?|candidate(?:\.(?:username|evidence(?:\[(?:[0-9]|[1-5][0-9])\](?:\.(?:evidence_id|skill_id|description|level|source|verified))?)?))?|qualifications(?:\[[0-9]\](?:\.(?:qualification_id|required|declared|source|verification|note))?)?)$/;
   if(!body.field_errors.every(item=>item&&same(Object.keys(item).sort(),['path','reason'])&&typeof item.path==='string'&&allowed.test(item.path)&&typeof item.reason==='string'&&Object.hasOwn(reasons,item.reason)))return;
-  for(const item of body.field_errors)addNode(fieldErrors,'li',`${item.path}：${reasons[item.reason]}。`);fieldErrors.hidden=body.field_errors.length===0;
+  const raw=jsonDraft.value,token=fieldHintGeneration;
+  for(const item of body.field_errors){const row=addNode(fieldErrors,'li',`${item.path}：${reasons[item.reason]}。`),button=addNode(row,'button','定位 '+item.path);button.type='button';button.addEventListener('click',()=>locateField(item.path,raw,token));}fieldErrors.hidden=body.field_errors.length===0;
 }
 async function modelAction(validateOnly=false,regenerateApproved=false){
   if(formatActive||analysisActive||preview.hidden)return;
@@ -223,19 +285,20 @@ function addNode(parent,tag,text,className=''){const item=document.createElement
 const levelLabels={learning:'学习',practice:'练习',project:'项目',production:'生产实践'},categoryLabels={required:'必需要求',preferred:'加分要求'};
 function evidenceNode(parent,item){const card=addNode(parent,'div','');addNode(card,'p',`${item.evidence_id} · ${item.skill_id} · 层级声明 ${levelLabels[item.level]}（${item.level}）`);addNode(card,'p',item.description);addNode(card,'p',`来源声明：${item.source} · verified=false（待核实）`,'meta');}
 function renderAnalysis(report){
+  resetAnalysisFilter();
   const draft=report.case,evidence=new Map(draft.candidate.evidence.map(item=>[item.evidence_id,item])),used=new Set(),matches=document.querySelector('#analysis-matches');matches.replaceChildren();
   document.querySelector('#analysis-summary').textContent=`分析执行完成 · ${draft.job.title} · 匿名候选人 ${draft.candidate.username}`;
   document.querySelector('#analysis-counts').textContent=Object.entries(stateLabels).map(([state,label])=>`${label} ${report.matches.filter(item=>item.status===state).length}`).join(' · ');
-  report.matches.forEach((match,index)=>{const card=addNode(matches,'article','');addNode(card,'h3',`${stateLabels[match.status]} · ${match.description}`);addNode(card,'p',`${match.requirement_id} · 技能 ${match.skill_id}`,'meta');addNode(card,'p',`${categoryLabels[match.category]}（${match.category}） · 输入优先级 ${match.priority}（原值，不用于评分或改变四态）`,'meta');addNode(card,'p',match.status==='missing'?'没有相同技能 ID 的证据，不等于现实中没有能力。':'存在相同技能 ID 的声明，但均未核实，不能判为已匹配。');for(const id of match.related_evidence_ids){used.add(id);evidenceNode(card,evidence.get(id));}const details=addNode(card,'details','');addNode(details,'summary','查看 trusted_facts 字段');addNode(details,'pre',JSON.stringify(report.trusted_facts[index],null,2));});
+  report.matches.forEach((match,index)=>{const card=addNode(matches,'article','');analysisRows.push({card,status:match.status});addNode(card,'h3',`${stateLabels[match.status]} · ${match.description}`);addNode(card,'p',`${match.requirement_id} · 技能 ${match.skill_id}`,'meta');addNode(card,'p',`${categoryLabels[match.category]}（${match.category}） · 输入优先级 ${match.priority}（原值，不用于评分或改变四态）`,'meta');addNode(card,'p',match.status==='missing'?'没有相同技能 ID 的证据，不等于现实中没有能力。':'存在相同技能 ID 的声明，但均未核实，不能判为已匹配。');for(const id of match.related_evidence_ids){used.add(id);evidenceNode(card,evidence.get(id));}const details=addNode(card,'details','');addNode(details,'summary','查看 trusted_facts 字段');addNode(details,'pre',JSON.stringify(report.trusted_facts[index],null,2));});
   const other=document.querySelector('#analysis-other');other.replaceChildren();for(const item of draft.candidate.evidence)if(!used.has(item.evidence_id))evidenceNode(other,item);if(used.size===evidence.size)addNode(other,'p','没有未关联证据。');
   const qualifications=document.querySelector('#analysis-qualifications');qualifications.replaceChildren();for(const item of draft.qualifications){addNode(qualifications,'p',`要求：${item.required}；声明：${item.declared}（待核实）`);addNode(qualifications,'p',`来源声明：${item.source}；${item.note}`,'meta');}if(!draft.qualifications.length)addNode(qualifications,'p','未提供资格声明，不等于已经满足资格。');
-  const limits=document.querySelector('#analysis-limits');limits.replaceChildren();for(const item of report.limitations)addNode(limits,'p',item);analysisResult.hidden=false;
+  const limits=document.querySelector('#analysis-limits');limits.replaceChildren();for(const item of report.limitations)addNode(limits,'p',item);analysisResult.hidden=false;analysisFilter.disabled=false;applyAnalysisFilter();
 }
-analysisConsent.addEventListener('change',()=>{if(!analysisConsent.checked){analysisGeneration++;if(analysisActive){analysisActive.abort();analysisActive=null;}analysisResult.hidden=true;analysisStatus.textContent='已撤销分析确认；旧结果不再展示。';}syncOperationButtons();});
+analysisConsent.addEventListener('change',()=>{if(!analysisConsent.checked){analysisGeneration++;if(analysisActive){analysisActive.abort();analysisActive=null;}analysisResult.hidden=true;resetAnalysisFilter();analysisStatus.textContent='已撤销分析确认；旧结果不再展示。';}syncOperationButtons();});
 async function analyseCurrent(){
   if(analysisActive||formatActive||jsonResult.hidden)return;
   if(validatedRaw===null||validatedRaw!==jsonDraft.value||!analysisConsent.checked){analysisStatus.textContent='请先仅校验完整的当前 JSON，并明确确认分析。';return;}
-  const raw=validatedRaw,draft=JSON.parse(raw),token=++analysisGeneration,controller=new AbortController();analysisActive=controller;syncOperationButtons();analysisResult.hidden=true;analysisStatus.textContent='正在用当前 JSON 本机分析，不调用模型、不保存…';let timedOut=false;
+  const raw=validatedRaw,draft=JSON.parse(raw),token=++analysisGeneration,controller=new AbortController();analysisActive=controller;syncOperationButtons();analysisResult.hidden=true;resetAnalysisFilter();analysisStatus.textContent='正在用当前 JSON 本机分析，不调用模型、不保存…';let timedOut=false;
   const timer=setTimeout(()=>{timedOut=true;controller.abort();},15000);
   try{
     const response=await fetch('/imports/analyses',{method:'POST',headers:{'Content-Type':'application/json','X-CareerAgent-Import':'local-preview'},body:'{"draft":'+raw+',"analysis_confirmed":true}',signal:controller.signal});

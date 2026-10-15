@@ -7,12 +7,12 @@ const vm=require('node:vm');
 const page=fs.readFileSync(path.join(__dirname,'file_import.html'),'utf8');
 const script=page.match(/<script>([\s\S]*?)<\/script>/)[1];
 const fixture={format:'txt',segments:[{location:'第 1 行',text:'虚构 Python 学习😀'},{location:'第 2 行',text:''}],warnings:['只是文字预览'],verification:'unverified',analysis_performed:false,saved:false};
-function element(){return {children:[],textContent:'',hidden:false,disabled:false,value:'',files:[],append(...items){this.children.push(...items);},replaceChildren(){this.children=[];},addEventListener(event,handler){this[event]=handler;}};}
+function element(){return {children:[],textContent:'',hidden:false,disabled:false,value:'',files:[],clientHeight:480,clientWidth:900,focus(){this.focused=true;},setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;},scrollIntoView(options){this.scrolled=options;},append(...items){this.children.push(...items);},replaceChildren(){this.children=[];},addEventListener(event,handler){this[event]=handler;}};}
 function ok(data=fixture){return {ok:true,status:200,json:async()=>structuredClone(data)};}
 function mount(fetchImpl=async()=>ok(),modelEnabled=false){
   const nodes=Object.fromEntries(['#file','#extract','#clear','#preview','#status','#segments','#warnings','#review','#confirm','#format-mode','#model-options','#text-kind','#additional','#data-kind','#case-id','#model-consent','#format-json','#format-status','#json-result','#json-draft','#json-status','#validate-json','#model-availability','#regenerate-warning','#regenerate-confirm','#regenerate-cancel','#json-completeness-status','#json-sections'].map(id=>[id,element()]));
   nodes['#preview'].hidden=true;
-  for(const id of ['#workflow-step','#format-help','#validate-help','#analyse-help','#field-errors'])nodes[id]=element();
+  for(const id of ['#workflow-step','#format-help','#validate-help','#analyse-help','#field-errors','#field-location-status','#analysis-filter','#filter-status','#filter-empty'])nodes[id]=element();
   nodes['#field-errors'].hidden=true;
   for(const id of ['#analysis-consent','#analyse-json','#analysis-status','#analysis-result','#analysis-summary','#analysis-counts','#analysis-matches','#analysis-other','#analysis-qualifications','#analysis-limits'])nodes[id]=element();
   nodes['#analysis-result'].hidden=true;nodes['#analysis-consent'].disabled=true;nodes['#analysis-consent'].checked=false;nodes['#analyse-json'].disabled=true;
@@ -20,7 +20,7 @@ function mount(fetchImpl=async()=>ok(),modelEnabled=false){
   nodes['#format-mode'].value='text';nodes['#text-kind'].value='resume';nodes['#data-kind'].value='synthetic_private_test';nodes['#case-id'].value='formatted_draft';nodes['#model-consent'].checked=false;nodes['#model-options'].hidden=true;nodes['#json-result'].hidden=true;
   const timers=new Map();let next=0;
   vm.runInNewContext(script.replace('const MODEL_ENABLED=false;',`const MODEL_ENABLED=${modelEnabled};`),{document:{querySelector:id=>nodes[id],createElement:element},AbortController,
-    fetch:fetchImpl,setTimeout(callback){timers.set(++next,callback);return next;},clearTimeout(id){timers.delete(id);}});
+    getComputedStyle:()=>({lineHeight:'23.1px',fontSize:'14px'}),fetch:fetchImpl,setTimeout(callback){timers.set(++next,callback);return next;},clearTimeout(id){timers.delete(id);}});
   const view={nodes,timers,choose(name='synthetic.txt',size=25){nodes['#file'].files=[{name,size}];nodes['#file'].change();},run:()=>nodes['#extract'].click(),clear:()=>nodes['#clear'].click(),confirm:()=>nodes['#confirm'].click(),format:()=>nodes['#format-json'].click(),validate:()=>nodes['#validate-json'].click(),enable(){nodes['#format-mode'].value='model';nodes['#format-mode'].change();view.confirm();nodes['#model-consent'].checked=true;nodes['#model-consent'].change();},expire(){assert.equal(timers.size,1);[...timers.values()][0]();}};
   return view;
 }
@@ -402,4 +402,115 @@ test('已有分析结果时，待再次生成确认优先显示，取消恢复�
   const view=await analysisView();await view.validate();view.consent();await view.analyse();await view.format();
   assert.equal(view.nodes['#regenerate-warning'].hidden,false);assert.match(view.nodes['#workflow-step'].textContent,/3 ·.*等待再次生成/);assert.equal(view.requests.length,3);assert.equal(view.nodes['#analysis-result'].hidden,false);
   view.nodes['#regenerate-cancel'].click();assert.match(view.nodes['#workflow-step'].textContent,/5 ·.*分析结果已展示/);assert.equal(view.requests.length,3);assert.equal(view.nodes['#analysis-result'].hidden,false);ready(view);
+});
+
+async function navigationView(raw,path='job.requirements[1].priority',reason='priority'){
+  let calls=0;
+  const view=await modelView(async url=>{calls++;return url==='/imports/format-json'?ok(completeFixture()):{ok:false,status:422,json:async()=>({error_code:'json',field_errors:[{path,reason}]})};});
+  view.enable();await view.format();const editor=view.nodes['#json-draft'];editor.value=raw;editor.input();await view.validate();
+  view.locate=()=>view.nodes['#field-errors'].children[0].children[0].click();view.calls=()=>calls;return view;
+}
+test('点击重复名称字段定位第二项原值，不改 JSON、不新增请求',async()=>{
+  const draft=completeFixture().draft;draft.job.requirements[1].priority=true;
+  const raw=JSON.stringify(draft,null,2),view=await navigationView(raw),editor=view.nodes['#json-draft'];view.locate();
+  assert.equal(editor.value.slice(editor.selectionStart,editor.selectionEnd),'true');assert.equal(editor.selectionStart,raw.indexOf('true'));
+  assert.equal(editor.value,raw);assert.equal(editor.focused,true);assert.equal(editor.scrolled.block,'center');assert.equal(view.calls(),2);
+  assert.match(view.nodes['#field-location-status'].textContent,/已选中对应值.*第 \d+ 行.*仅定位/);
+});
+test('转义字段名、字符串伪键、括号和 Unicode 不影响原始位置',async()=>{
+  const draft=completeFixture().draft;draft.notice='虚构😀 {"priority":true} \\ 引号"';draft.job.requirements[1].priority=true;
+  const raw=JSON.stringify(draft,null,2).replaceAll('"priority"','"prio\\u0072ity"').replaceAll('\n','\r\n');
+  const view=await navigationView(raw),editor=view.nodes['#json-draft'];view.locate();
+  assert.equal(editor.selectionStart,raw.lastIndexOf('true'));assert.equal(editor.value.slice(editor.selectionStart,editor.selectionEnd),'true');assert.equal(editor.value,raw);
+  assert.doesNotMatch(view.nodes['#field-location-status'].textContent,/无法/);
+});
+test('压缩 JSON 的远端字段会横向滚动，空容器和根路径也能定位',async()=>{
+  const draft=completeFixture().draft;draft.notice='虚构'.repeat(500);
+  for(const [path,reason,value] of [['job.requirements[1].priority','priority','1'],['qualifications','list','[]'],['draft','object',JSON.stringify(draft)]]){
+    const raw=JSON.stringify(draft),view=await navigationView(raw,path,reason),editor=view.nodes['#json-draft'];view.locate();
+    assert.equal(editor.value.slice(editor.selectionStart,editor.selectionEnd),value);if(path!=='draft')assert.ok(editor.scrollLeft>0);
+  }
+});
+test('缺失字段定位最近父级，null 或越界数组不猜测其他同名字段',async()=>{
+  const draft=completeFixture().draft;delete draft.job.requirements[1].priority;
+  for(const [path,value] of [['job.requirements[1].priority',draft.job.requirements[1]],['qualifications[3].required',[]]]){
+    const view=await navigationView(JSON.stringify(draft),path,'fields'),editor=view.nodes['#json-draft'];view.locate();
+    assert.deepEqual(JSON.parse(editor.value.slice(editor.selectionStart,editor.selectionEnd)),value);assert.match(view.nodes['#field-location-status'].textContent,/字段不存在.*父级/);
+  }
+  draft.job=null;const view=await navigationView(JSON.stringify(draft)),editor=view.nodes['#json-draft'];view.locate();assert.equal(editor.value.slice(editor.selectionStart,editor.selectionEnd),'null');
+});
+test('重复键、非有限数和超深 JSON 不执行含糊定位或回显内容',async()=>{
+  const raw=JSON.stringify(completeFixture().draft);
+  for(const invalid of [raw.replace('{','{"notice":"private-value",'),raw.replace('"priority":2','"priority":1e400'),raw.replace('"notice":"模型整理，待复核"','"notice":'+ '['.repeat(34)+'0'+']'.repeat(34))]){
+    const view=await navigationView(invalid),editor=view.nodes['#json-draft'];view.locate();assert.equal(editor.selectionStart,undefined);
+    assert.equal(editor.value,invalid);assert.match(view.nodes['#field-location-status'].textContent,/无法可靠定位/);assert.doesNotMatch(view.nodes['#field-location-status'].textContent,/private-value/);
+  }
+});
+test('过长草稿保守拒绝定位，不影响既有错误提示与原文',async()=>{
+  const draft=completeFixture().draft;draft.notice='x'.repeat(120001);const raw=JSON.stringify(draft),view=await navigationView(raw);view.locate();
+  assert.equal(view.nodes['#json-draft'].selectionStart,undefined);assert.equal(view.nodes['#json-draft'].value,raw);assert.equal(view.nodes['#field-errors'].hidden,false);assert.match(view.nodes['#field-location-status'].textContent,/大小／嵌套限制/);
+});
+test('语法错误不产生定位按钮；旧提示不能定位已修改或已清空草稿',async()=>{
+  for(const action of ['edit','clear','silent-edit']){
+    const raw=JSON.stringify(completeFixture().draft),view=await navigationView(raw),button=view.nodes['#field-errors'].children[0].children[0];
+    if(action==='clear')view.clear();else{view.nodes['#json-draft'].value=raw+' ';if(action==='edit')view.nodes['#json-draft'].input();}
+    button.click();assert.equal(view.nodes['#json-draft'].selectionStart,undefined);assert.equal(view.nodes['#field-location-status'].textContent,'');assert.equal(view.calls(),2);
+  }
+  const view=await navigationView('{invalid');assert.equal(view.nodes['#field-errors'].hidden,true);assert.equal(view.calls(),1);
+});
+test('旧定位按钮在重新校验后失效，即使草稿完全相同',async()=>{
+  const view=await navigationView(JSON.stringify(completeFixture().draft)),old=view.nodes['#field-errors'].children[0].children[0];await view.validate();old.click();
+  assert.equal(view.nodes['#json-draft'].selectionStart,undefined);view.locate();assert.equal(view.nodes['#json-draft'].value.slice(view.nodes['#json-draft'].selectionStart,view.nodes['#json-draft'].selectionEnd),'1');assert.equal(view.calls(),3);
+});
+function filterView(view,state){view.nodes['#analysis-filter'].value=state;view.nodes['#analysis-filter'].change();}
+test('结果筛选保留全量统计和每条可信事实，仅改变卡片可见性',async()=>{
+  const view=await analysisView();await view.validate();view.consent();await view.analyse();
+  const cards=view.nodes['#analysis-matches'].children,counts=view.nodes['#analysis-counts'].textContent,facts=cards.map(card=>card.children.at(-1).children[1].textContent);
+  assert.equal(view.nodes['#analysis-filter'].disabled,false);assert.match(view.nodes['#filter-status'].textContent,/全量要求 2 项；当前显示 2 项/);
+  for(const [state,hidden] of [['unverified',[false,true]],['missing',[true,false]],['all',[false,false]],['unexpected',[false,false]]]){
+    filterView(view,state);assert.deepEqual(cards.map(card=>card.hidden),hidden);assert.equal(view.nodes['#analysis-counts'].textContent,counts);
+    assert.deepEqual(cards.map(card=>card.children.at(-1).children[1].textContent),facts);assert.equal(view.requests.length,3);assert.equal(view.nodes['#filter-empty'].hidden,true);
+  }
+  assert.equal(view.nodes['#analysis-filter'].value,'all');
+});
+test('零筛选结果明确提示，不把显示数量当成全量或隐藏其他证据和资格',async()=>{
+  const view=await analysisView();const draft=completeFixture().draft;draft.job.requirements.pop();draft.candidate.evidence.push({evidence_id:'ev_sql',skill_id:'sql',description:'虚构',source:'模拟',level:'learning',verified:false});draft.qualifications=[{qualification_id:'q_1',required:'虚构要求',declared:'待确认',source:'模拟',verification:'unverified',note:'不判断资格'}];
+  view.nodes['#json-draft'].value=JSON.stringify(draft);view.nodes['#json-draft'].input();await view.validate();view.consent();await view.analyse();
+  const other=JSON.stringify(view.nodes['#analysis-other']),qualifications=JSON.stringify(view.nodes['#analysis-qualifications']);filterView(view,'missing');
+  assert.equal(view.nodes['#filter-empty'].hidden,false);assert.match(view.nodes['#filter-status'].textContent,/全量要求 1 项；当前显示 0 项（缺少证据）/);
+  assert.match(view.nodes['#analysis-counts'].textContent,/待核实 1.*缺少证据 0/);assert.equal(JSON.stringify(view.nodes['#analysis-other']),other);assert.equal(JSON.stringify(view.nodes['#analysis-qualifications']),qualifications);
+  filterView(view,'all');assert.equal(view.nodes['#filter-empty'].hidden,true);assert.equal(view.nodes['#analysis-matches'].children[0].hidden,false);
+});
+test('编辑、撤销、清空和重新校验使旧筛选失效，新报告恢复全部',async()=>{
+  for(const action of ['edit','revoke','clear','validate']){
+    const view=await analysisView();await view.validate();view.consent();await view.analyse();filterView(view,'missing');
+    if(action==='edit')view.nodes['#json-draft'].input();if(action==='revoke'){view.nodes['#analysis-consent'].checked=false;view.nodes['#analysis-consent'].change();}if(action==='clear')view.clear();if(action==='validate')await view.validate();
+    assert.equal(view.nodes['#analysis-filter'].disabled,true);assert.equal(view.nodes['#filter-status'].textContent,'');assert.equal(view.nodes['#filter-empty'].hidden,true);filterView(view,'missing');assert.equal(view.nodes['#filter-status'].textContent,'');
+    if(action==='clear')continue;
+    if(action!=='revoke')await view.validate();view.consent();await view.analyse();assert.equal(view.nodes['#analysis-filter'].value,'all');assert.match(view.nodes['#filter-status'].textContent,/当前显示 2 项/);assert.equal(view.nodes['#analysis-matches'].children.every(card=>!card.hidden),true);
+  }
+});
+test('重复分析失败清除旧筛选统计，重试成功从全部展示',async()=>{
+  let calls=0;const view=await analysisView((url,options,payload)=>++calls===2?{ok:false,status:503,json:async()=>({error_code:'analysis'})}:ok(reportFixture(payload.draft)));
+  await view.validate();view.consent();await view.analyse();filterView(view,'missing');await view.analyse();
+  assert.equal(view.nodes['#analysis-result'].hidden,true);assert.equal(view.nodes['#analysis-filter'].disabled,true);assert.equal(view.nodes['#filter-status'].textContent,'');
+  await view.analyse();assert.equal(view.nodes['#analysis-filter'].value,'all');assert.match(view.nodes['#filter-status'].textContent,/当前显示 2 项/);assert.equal(view.requests.filter(item=>item.url==='/imports/format-json').length,1);
+});
+
+test('文字值及包含空对象的数组按原样选中，不执行字段内容',async()=>{
+  const draft=completeFixture().draft;draft.job.title='虚构😀 "标题" [ ]';draft.qualifications=[{}];
+  for(const [path,reason,value] of [['job.title','text',draft.job.title],['qualifications[0]','fields',{}]]){
+    const raw=JSON.stringify(draft),view=await navigationView(raw,path,reason),editor=view.nodes['#json-draft'];view.locate();
+    assert.deepEqual(JSON.parse(editor.value.slice(editor.selectionStart,editor.selectionEnd)),value);assert.equal(editor.value,raw);assert.equal(view.calls(),2);
+  }
+  const duplicated=JSON.stringify(draft).replace('"title":','"ti\\u0074le":"虚构重复", "title":');const view=await navigationView(duplicated,'job.title','text');view.locate();assert.match(view.nodes['#field-location-status'].textContent,/无法可靠定位/);
+});
+test('四十项长报告筛选数量与全量统计、证据关联均保持一致',async()=>{
+  const view=await analysisView(),draft=completeFixture().draft;
+  draft.job.requirements=Array.from({length:40},(_,index)=>({requirement_id:'req_'+index,skill_id:index%2?'git':'python',description:'虚构要求 '+index,category:'required',priority:2}));
+  view.nodes['#json-draft'].value=JSON.stringify(draft);view.nodes['#json-draft'].input();await view.validate();view.consent();await view.analyse();
+  const cards=view.nodes['#analysis-matches'].children,counts=view.nodes['#analysis-counts'].textContent;
+  assert.match(counts,/待核实 20.*缺少证据 20/);assert.equal(cards.length,40);
+  for(const state of ['unverified','missing']){filterView(view,state);assert.equal(cards.filter(card=>!card.hidden).length,20);assert.match(view.nodes['#filter-status'].textContent,/全量要求 40 项；当前显示 20 项/);assert.equal(view.nodes['#analysis-counts'].textContent,counts);}
+  filterView(view,'all');assert.equal(cards.filter(card=>!card.hidden).length,40);assert.equal(view.requests.length,3);
 });

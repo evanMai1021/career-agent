@@ -29,6 +29,8 @@ V1.9 当前草稿分析：[`file_import_server.py`](../file_import_server.py) �
 
 V1.9.1 校对引导：[`draft_validation_hints.py`](../draft_validation_hints.py) 仅在原严格校验失败后解释有限字段问题，[`test_draft_validation_hints.py`](../test_draft_validation_hints.py) 验证不回显原值、未知键、隐私及通用解析错误；导入页脚本验证中文展示、明确前置条件与编辑／晚响应失效。真实浏览器已用虚构输入与整理替身验证定位、恢复和展示。可介绍“改善人工校对与操作可理解性”，不能声称“提示穷尽全部错误、完整隐私检测或中文标签提高真实匹配准确率”。
 
+V1.9.2 校对导航与结果筛选：[`file_import.html`](../file_import.html) 和 [`test_file_import_page.cjs`](../test_file_import_page.cjs) 验证点击错误后按原始位置选中值、缺失父级与保守降级、旧提示失效；筛选只隐藏要求卡片，保留全量统计和全部可信事实。另用真实浏览器、虚构 TXT 与整理替身验证点击和筛选、零结果、清空重置。可介绍“便于校对长 JSON 和查看长报告”，不能声称自动修复、增加事实准确性、已核实能力或筛选改变匹配状态。
+
 ```text
 本机演示页：打开 /demo → 加载模拟输入和预设 → 选择案例 → POST /demo/analyses
                        → 校验拒绝，或计算匹配与可信事实 → 分开显示执行、判定原因和案例核对
