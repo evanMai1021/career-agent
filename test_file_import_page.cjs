@@ -12,6 +12,8 @@ function ok(data=fixture){return {ok:true,status:200,json:async()=>structuredClo
 function mount(fetchImpl=async()=>ok(),modelEnabled=false){
   const nodes=Object.fromEntries(['#file','#extract','#clear','#preview','#status','#segments','#warnings','#review','#confirm','#format-mode','#model-options','#text-kind','#additional','#data-kind','#case-id','#model-consent','#format-json','#format-status','#json-result','#json-draft','#json-status','#validate-json','#model-availability','#regenerate-warning','#regenerate-confirm','#regenerate-cancel','#json-completeness-status','#json-sections'].map(id=>[id,element()]));
   nodes['#preview'].hidden=true;
+  for(const id of ['#workflow-step','#format-help','#validate-help','#analyse-help','#field-errors'])nodes[id]=element();
+  nodes['#field-errors'].hidden=true;
   for(const id of ['#analysis-consent','#analyse-json','#analysis-status','#analysis-result','#analysis-summary','#analysis-counts','#analysis-matches','#analysis-other','#analysis-qualifications','#analysis-limits'])nodes[id]=element();
   nodes['#analysis-result'].hidden=true;nodes['#analysis-consent'].disabled=true;nodes['#analysis-consent'].checked=false;nodes['#analyse-json'].disabled=true;
   nodes['#regenerate-warning'].hidden=true;
@@ -343,4 +345,61 @@ test('撤销并重新分析后，旧响应不能提前解锁新请求的按钮',
   assert.equal(view.nodes['#format-json'].disabled,false);view.consent();const latest=view.analyse();completions[0]();await old;
   assert.equal(view.nodes['#analysis-result'].hidden,true);assert.equal(view.nodes['#format-json'].disabled,true);assert.equal(view.nodes['#validate-json'].disabled,true);
   completions[1]();await latest;assert.equal(view.nodes['#analysis-result'].hidden,false);assert.equal(view.nodes['#format-json'].disabled,false);assert.equal(view.nodes['#validate-json'].disabled,false);ready(view);
+});
+
+test('步骤引导覆盖完整复验、明确确认、分析、编辑失效和清空，不自动请求',async()=>{
+  const view=await analysisView();assert.match(view.nodes['#workflow-step'].textContent,/4 ·.*仅校验/);assert.match(view.nodes['#analyse-help'].textContent,/须先完整复验/);
+  await view.validate();assert.match(view.nodes['#workflow-step'].textContent,/5 ·.*勾选分析确认/);assert.match(view.nodes['#analyse-help'].textContent,/须先逐项复核/);
+  view.consent();assert.match(view.nodes['#analyse-help'].textContent,/可点击分析.*不调用模型/);await view.analyse();assert.match(view.nodes['#workflow-step'].textContent,/分析结果已展示.*待核实/);
+  view.nodes['#json-draft'].input();assert.match(view.nodes['#workflow-step'].textContent,/4 ·/);assert.match(view.nodes['#analyse-help'].textContent,/须先完整复验/);assert.equal(view.requests.length,3);
+  view.clear();assert.match(view.nodes['#workflow-step'].textContent,/1 ·.*选择文件/);assert.match(view.nodes['#analyse-help'].textContent,/尚无 JSON 草稿/);assert.equal(view.requests.length,3);
+  assert.match(page,/id="analyse-json"[^>]*aria-describedby="analyse-help"/);
+});
+
+test('模型关闭、文字未确认及外发未同意的原因分别显示',async()=>{
+  const disabled=mount();assert.match(disabled.nodes['#format-help'].textContent,/服务未启用模型整理/);disabled.choose();await disabled.run();assert.match(disabled.nodes['#workflow-step'].textContent,/2 ·.*校对/);
+  const view=await modelView();view.nodes['#format-mode'].value='model';view.nodes['#format-mode'].change();assert.match(view.nodes['#format-help'].textContent,/请先确认文字校对/);view.confirm();assert.match(view.nodes['#format-help'].textContent,/勾选外发同意/);view.nodes['#model-consent'].checked=true;view.nodes['#model-consent'].change();assert.match(view.nodes['#format-help'].textContent,/可点击生成.*费用/);assert.equal(view.nodes['#analysis-result'].hidden,true);
+});
+
+test('分析期间步骤和禁用原因明确，取消后晚响应不恢复旧引导',async()=>{
+  let complete;const view=await analysisView((url,options,payload)=>new Promise(resolve=>{complete=()=>resolve(ok(reportFixture(payload.draft)));}));await view.validate();view.consent();const pending=view.analyse();assert.match(view.nodes['#workflow-step'].textContent,/5 ·.*正在本机分析/);assert.match(view.nodes['#validate-help'].textContent,/暂时禁用/);assert.match(view.nodes['#format-help'].textContent,/暂时禁用/);view.nodes['#json-draft'].input();complete();await pending;assert.match(view.nodes['#workflow-step'].textContent,/4 ·/);assert.doesNotMatch(view.nodes['#workflow-step'].textContent,/已展示|正在本机分析/);
+});
+
+test('中文层级、必需加分要求和优先级只展示，不更改可信事实',async()=>{
+  const view=await analysisView();const draft=completeFixture().draft;draft.job.requirements[1].category='preferred';
+  for(const [index,level] of ['learning','practice','project','production'].entries())draft.candidate.evidence.push({evidence_id:'extra_'+index,skill_id:'python',description:'虚构声明',source:'模拟',level,verified:false});
+  view.nodes['#json-draft'].value=JSON.stringify(draft);view.nodes['#json-draft'].input();await view.validate();view.consent();await view.analyse();
+  const cards=view.nodes['#analysis-matches'].children;assert.match(cards[0].children[2].textContent,/必需要求.*输入优先级 2.*不用于评分/);assert.match(cards[1].children[2].textContent,/加分要求.*输入优先级 1/);
+  const text=JSON.stringify(cards);for(const label of ['学习（learning）','练习（practice）','项目（project）','生产实践（production）'])assert.ok(text.includes(label));assert.match(view.nodes['#analysis-counts'].textContent,/已匹配 0.*部分匹配 0.*待核实 1/);
+  const fact=JSON.parse(cards[0].children.at(-1).children[1].textContent);assert.equal(fact.origin,'python_deterministic_match');assert.equal(fact.status,'unverified');assert.deepEqual(fact.verified_evidence_ids,[]);assert.equal(fact.unverified_evidence_ids.length,5);
+});
+
+test('本地字段错误展示固定路径与中文原因，编辑清除提示且不再次调用模型',async()=>{
+  const errorBody={error_code:'json',detail:'private-content',field_errors:[{path:'job.requirements[1].priority',reason:'priority'},{path:'candidate.evidence[0].verified',reason:'false_only'}]};
+  let fail=true;const view=await modelView(async(url,options)=>url==='/imports/format-json'?ok(completeFixture()):fail?{ok:false,status:422,json:async()=>errorBody}:ok(validationFixture(JSON.parse(options.body).draft)));view.enable();await view.format();await view.validate();
+  assert.equal(view.nodes['#field-errors'].hidden,false);assert.match(view.nodes['#field-errors'].children[0].textContent,/job.requirements\[1\].priority.*整数 1、2 或 3/);assert.match(view.nodes['#field-errors'].children[1].textContent,/必须为 false/);assert.doesNotMatch(JSON.stringify(view.nodes['#field-errors']),/private-content/);assert.equal(view.nodes['#analysis-consent'].disabled,true);
+  view.nodes['#json-draft'].input();assert.equal(view.nodes['#field-errors'].hidden,true);assert.equal(view.nodes['#field-errors'].children.length,0);fail=false;await view.validate();assert.equal(view.nodes['#analysis-consent'].disabled,false);assert.equal(view.nodes['#field-errors'].hidden,true);
+});
+
+test('未知路径、原因、额外内容、过量提示和隐私类别均不展示服务端字段内容',async()=>{
+  const safe={path:'job.requirements[0].priority',reason:'priority'};
+  const invalid=[{error_code:'privacy',field_errors:[safe]},{error_code:'input',field_errors:[safe]},
+    {error_code:'json',field_errors:[{path:'unknown-private-field',reason:'priority'}]},
+    {error_code:'json',field_errors:[{path:'job.requirements[40].priority',reason:'priority'}]},
+    {error_code:'json',field_errors:[{...safe,reason:'private-reason'}]},
+    {error_code:'json',field_errors:[{...safe,reason:['priority']}]},
+    {error_code:'json',field_errors:[{...safe,reason:'__proto__'}]},
+    {error_code:'json',field_errors:[{...safe,value:'private-value'}]},
+    {error_code:'json',field_errors:Array(9).fill(safe)}];
+  for(const body of invalid){const view=await modelView(async(url)=>url==='/imports/format-json'?ok(completeFixture()):{ok:false,status:422,json:async()=>body});view.enable();await view.format();await view.validate();assert.equal(view.nodes['#field-errors'].hidden,true);assert.equal(view.nodes['#field-errors'].children.length,0);assert.doesNotMatch(view.nodes['#json-status'].textContent,/private-|__proto__/);}
+});
+
+test('修改后晚返回的字段错误不能恢复旧提示或步骤',async()=>{
+  let complete;const view=await modelView(async(url)=>url==='/imports/format-json'?ok(completeFixture()):new Promise(resolve=>{complete=()=>resolve({ok:false,status:422,json:async()=>({error_code:'json',field_errors:[{path:'job.requirements[0].priority',reason:'priority'}]})});}));view.enable();await view.format();const pending=view.validate();assert.match(view.nodes['#workflow-step'].textContent,/正在本地校验/);view.nodes['#json-draft'].input();complete();await pending;assert.equal(view.nodes['#field-errors'].hidden,true);assert.equal(view.nodes['#field-errors'].children.length,0);assert.match(view.nodes['#workflow-step'].textContent,/4 ·.*修正/);ready(view);
+});
+
+test('已有分析结果时，待再次生成确认优先显示，取消恢复且不新增请求',async()=>{
+  const view=await analysisView();await view.validate();view.consent();await view.analyse();await view.format();
+  assert.equal(view.nodes['#regenerate-warning'].hidden,false);assert.match(view.nodes['#workflow-step'].textContent,/3 ·.*等待再次生成/);assert.equal(view.requests.length,3);assert.equal(view.nodes['#analysis-result'].hidden,false);
+  view.nodes['#regenerate-cancel'].click();assert.match(view.nodes['#workflow-step'].textContent,/5 ·.*分析结果已展示/);assert.equal(view.requests.length,3);assert.equal(view.nodes['#analysis-result'].hidden,false);ready(view);
 });

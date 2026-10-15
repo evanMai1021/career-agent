@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from evaluation_privacy import find_sensitive_kinds
 from file_importer import _safe_text, FileImportError
 from job_data import validate_job, validate_candidate_evidence
+from draft_validation_hints import draft_field_errors
 from private_case_runner import (
     PrivateCaseError, _unique_object, _reject_constant,
     _validate_text_safety, validate_private_case,
@@ -34,8 +35,9 @@ FORMAT_ERRORS = {
 
 
 class FormatError(ValueError):
-    def __init__(self, code):
+    def __init__(self, code, *, field_errors=None):
         self.code = code if code in FORMAT_ERRORS else "output"
+        self.field_errors = field_errors if self.code == "json" and field_errors else []
         super().__init__(FORMAT_ERRORS[self.code])
 
 
@@ -188,7 +190,7 @@ def validate_draft(draft):
     except FormatError:
         raise
     except (ValueError, TypeError, KeyError, RecursionError, AttributeError):
-        raise FormatError("json") from None
+        raise FormatError("json", field_errors=draft_field_errors(draft)) from None
     return {"draft":deepcopy(draft), "schema_valid":not missing, "missing_sections":missing,
             "verification":"unverified", "analysis_performed":False, "saved":False}
 

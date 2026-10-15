@@ -11,12 +11,14 @@ body{margin:0;background:#f3f7fa;color:#17354c;font:16px/1.65 system-ui,sans-ser
 #json-completeness,#regenerate-warning{padding:14px 18px;border:1px solid #d6b05e;border-radius:8px;background:#fff8e8;margin:16px 0}
 #json-sections{margin:8px 0;padding-left:24px}
 #analysis-result article{border:1px solid #b7cbd9;border-radius:8px;padding:16px;margin:14px 0}#analysis-result pre{font:13px/1.6 Consolas,monospace}#analysis-result .meta{font-size:14px;color:#49677d}
+#workflow{border:1px solid #b7cbd9;border-radius:10px;background:#eef6fb;padding:16px}#workflow p{margin:6px 0}
 @media(max-width:600px){#json-draft{min-height:360px}section{padding:16px}}
 </style>
 </head>
 <body><main>
 <h1>本机文件文字导入</h1>
 <p>选择文件 → 提取并校对文字 → 可选模型整理 → 校对 JSON → 仅在完整校验并确认后本机分析。提取与整理不会自动分析，不验证能力。</p>
+<aside id="workflow" aria-label="当前步骤与操作说明"><p id="workflow-step" role="status" aria-live="polite">当前步骤：1 · 选择虚构或脱敏文件。</p><p id="format-help"></p><p id="validate-help"></p><p id="analyse-help"></p></aside>
 <section>
 <h2>1. 选择虚构或脱敏文件</h2>
 <p>支持文字型 PDF、UTF-8 TXT、Word DOCX，最多 2 MiB。旧式 DOC 请先另存为 DOCX。</p>
@@ -42,7 +44,7 @@ body{margin:0;background:#f3f7fa;color:#17354c;font:16px/1.65 system-ui,sans-ser
 </div>
 <button id="confirm" type="button">确认本页文字校对</button>
 <p id="review" role="status">未校对。文本及声明均待核实，未产生匹配结果。</p>
-<button id="format-json" type="button" hidden>用已修改的文字生成 JSON 草稿</button>
+<button id="format-json" type="button" hidden aria-describedby="format-help">用已修改的文字生成 JSON 草稿</button>
 <p id="format-status" role="status" aria-live="polite"></p>
 <div id="regenerate-warning" hidden role="status" aria-live="polite">
 <p>本页已成功生成过 JSON。再次生成会重新发送当前校对文字，可能再次产生 API 费用，并替换当前 JSON 草稿（包括手动修改）。取消可保留草稿；仅校验 JSON 不调用模型。</p>
@@ -52,12 +54,14 @@ body{margin:0;background:#f3f7fa;color:#17354c;font:16px/1.65 system-ui,sans-ser
 <h2>4. 校对模型生成的 JSON</h2><p>技能标识、层级、要求类型及优先级都是模型提议，须逐项核对。所有证据 verified=false，资格仍待核实；缺少岗位或候选人时为 null，不能直接用于原分析入口。</p>
 <div id="json-completeness" role="status" aria-live="polite"><p id="json-completeness-status"></p><ul id="json-sections"></ul></div>
 <label for="json-draft">JSON 草稿（可以继续修改）</label><textarea id="json-draft" spellcheck="false"></textarea>
-<button id="validate-json" type="button">仅校验当前 JSON（不调用模型）</button><p id="json-status" role="status"></p>
+<button id="validate-json" type="button" aria-describedby="validate-help">仅校验当前 JSON（不调用模型）</button><p id="json-status" role="status"></p>
+<ul id="field-errors" aria-label="JSON 字段修正提示" hidden></ul>
+<small>字段路径中的数组下标从 0 开始，例如 [1] 是第 2 项。最多显示 8 项定位；未列出不代表其他字段有效，仍以完整校验结果为准。</small>
 <p>不自动保存或分析。完整草稿经“仅校验”通过后，可确认使用当前 JSON 在本页分析，无须保存文件或重启。任何修改都会撤销分析确认和旧结果；原分析页的启动快照不变。</p>
 <h2>5. 使用当前草稿进行本机分析</h2>
 <p>分析复用 Python 确定性规则，不调用模型、没有新增模型费用。导入证据始终 verified=false，因此只能产生“待核实”或“缺少证据”；不能把分析完成当作能力匹配、资格审核或录用成功。</p>
 <label><input id="analysis-consent" type="checkbox" disabled>我已逐项复核当前 JSON，确认用它分析；理解内容仍待核实。</label>
-<button id="analyse-json" type="button" disabled>确认并分析当前草稿（本机，不调用模型）</button>
+<button id="analyse-json" type="button" disabled aria-describedby="analyse-help">确认并分析当前草稿（本机，不调用模型）</button>
 <p id="analysis-status" role="status" aria-live="polite">请先仅校验完整的当前 JSON，再确认分析。</p>
 <div id="analysis-result" hidden><h3 id="analysis-summary"></h3><p id="analysis-counts"></p><p>trusted_facts（可信事实）仅记录规则判定与关联证据 ID，不证明输入声明真实；此草稿没有人工预设可核对。</p><div id="analysis-matches"></div><h3>未关联本次要求的其他证据</h3><div id="analysis-other"></div><h3>资格声明（不参与技能匹配）</h3><div id="analysis-qualifications"></div><div id="analysis-limits"></div></div>
 </div>
@@ -79,13 +83,23 @@ let formatActive=null,formatGeneration=0,reviewed=false;
 let hasGenerated=false;
 const analysisConsent=document.querySelector('#analysis-consent'),analyseButton=document.querySelector('#analyse-json'),analysisStatus=document.querySelector('#analysis-status'),analysisResult=document.querySelector('#analysis-result');
 let validatedRaw=null,analysisActive=null,analysisGeneration=0;
-function syncOperationButtons(){const busy=!!formatActive||!!analysisActive;formatButton.disabled=!MODEL_ENABLED||busy;validateButton.disabled=busy;analyseButton.disabled=busy||!analysisConsent.checked||validatedRaw===null||validatedRaw!==jsonDraft.value;}
-function invalidateAnalysis(){analysisGeneration++;if(analysisActive){analysisActive.abort();analysisActive=null;}validatedRaw=null;analysisConsent.checked=false;analysisConsent.disabled=true;syncOperationButtons();analysisResult.hidden=true;for(const id of ['#analysis-summary','#analysis-counts','#analysis-matches','#analysis-other','#analysis-qualifications','#analysis-limits']){const item=document.querySelector(id);item.textContent='';item.replaceChildren();}analysisStatus.textContent='请先仅校验完整的当前 JSON，再确认分析。';}
-function resetCompleteness(){invalidateAnalysis();completenessStatus.textContent='当前 JSON 尚未通过重新校验，缺项状态待确认。';jsonSections.replaceChildren();}
+const fieldErrors=document.querySelector('#field-errors');
+function clearFieldErrors(){fieldErrors.replaceChildren();fieldErrors.hidden=true;}
+function updateGuidance(){
+  const busy=!!formatActive||!!analysisActive,complete=validatedRaw!==null&&validatedRaw===jsonDraft.value;
+  const step=active?'1 · 正在提取，请等待或取消。':preview.hidden?'1 · 选择文件，然后点击提取。':analysisActive?'5 · 正在本机分析，请等待或撤销确认。':formatActive?(jsonResult.hidden?'3 · 正在整理 JSON；不要重复发送。':'4 · 正在本地校验当前 JSON。'):!regenerateWarning.hidden?'3 · 等待再次生成的费用及草稿替换确认。':!analysisResult.hidden?'5 · 分析结果已展示，声明仍待核实。':jsonResult.hidden?(reviewed?'3 · 可选模型整理；仅保留文字也可到此结束。':'2 · 请对照原文校对，再确认本页文字。'):!complete?'4 · 请核对／修正 JSON 后仅校验；若缺项先补齐。':!analysisConsent.checked?'5 · 完整复验通过，请人工复核并勾选分析确认。':'5 · 已确认，可以点击本机分析。';
+  document.querySelector('#workflow-step').textContent='当前步骤：'+step;
+  document.querySelector('#format-help').textContent='生成 JSON：'+(!MODEL_ENABLED?'不可用，服务未启用模型整理；默认提取仍可用。':busy?'暂时禁用，等待当前操作完成或取消。':preview.hidden?'先提取并校对文字。':formatMode.value!=='model'?'如需生成，请选择模型整理选项；会外发文字并可能收费。':!reviewed?'请先确认文字校对。':!modelConsent.checked?'需要另行勾选外发同意，分析确认不能代替。':hasGenerated?'可再次生成，但须确认可能再次收费并替换草稿。':'可点击生成；会外发校对文字并可能产生费用。');
+  document.querySelector('#validate-help').textContent='仅校验 JSON：'+(busy?'暂时禁用，等待当前操作完成或取消。':jsonResult.hidden?'尚无可校验草稿；须先生成 JSON。':'可点击校验当前草稿，不调用模型；任何编辑都需要重新校验。');
+  document.querySelector('#analyse-help').textContent='本机分析：'+(busy?'暂时禁用，等待当前操作完成或取消。':jsonResult.hidden?'不可用，尚无 JSON 草稿。':!complete?'不可用，须先完整复验当前 JSON，确认岗位和候选人齐全。':!analysisConsent.checked?'不可用，须先逐项复核并勾选分析确认。':'可点击分析，不调用模型、不保存或核实能力。');
+}
+function syncOperationButtons(){const busy=!!formatActive||!!analysisActive;formatButton.disabled=!MODEL_ENABLED||busy;validateButton.disabled=busy;analyseButton.disabled=busy||!analysisConsent.checked||validatedRaw===null||validatedRaw!==jsonDraft.value;updateGuidance();}
+function invalidateAnalysis(){analysisGeneration++;if(analysisActive){analysisActive.abort();analysisActive=null;}validatedRaw=null;analysisConsent.checked=false;analysisConsent.disabled=true;analysisResult.hidden=true;for(const id of ['#analysis-summary','#analysis-counts','#analysis-matches','#analysis-other','#analysis-qualifications','#analysis-limits']){const item=document.querySelector(id);item.textContent='';item.replaceChildren();}analysisStatus.textContent='请先仅校验完整的当前 JSON，再确认分析。';syncOperationButtons();}
+function resetCompleteness(){clearFieldErrors();invalidateAnalysis();completenessStatus.textContent='当前 JSON 尚未通过重新校验，缺项状态待确认。';jsonSections.replaceChildren();}
 function invalidateJson(){formatGeneration++;if(formatActive){formatActive.abort();formatActive=null;}regenerateWarning.hidden=true;formatButton.disabled=!MODEL_ENABLED;validateButton.disabled=false;jsonResult.hidden=true;jsonDraft.value='';jsonStatus.textContent='';formatStatus.textContent='';resetCompleteness();}
 function editsChanged(){reviewed=false;modelConsent.checked=false;invalidateJson();reviewNode.textContent='文字或设置已修改，请重新确认校对；声明仍待核实。';}
 function clearPreview(){preview.hidden=true;segmentNode.replaceChildren();warningNode.replaceChildren();drafts=[];reviewed=false;modelConsent.checked=false;invalidateJson();reviewNode.textContent='未校对。文本及声明均待核实，未产生匹配结果。';}
-function reset(clearFile=true){generation++;if(active){active.abort();active=null;}hasGenerated=false;extractButton.disabled=false;clearPreview();additional.value='';modelConsent.checked=false;formatMode.value='text';modelOptions.hidden=true;formatButton.hidden=true;if(clearFile)fileInput.value='';statusNode.textContent='已清空。本页没有保存文件或草稿。';}
+function reset(clearFile=true){generation++;if(active){active.abort();active=null;}hasGenerated=false;extractButton.disabled=false;clearPreview();additional.value='';modelConsent.checked=false;formatMode.value='text';modelOptions.hidden=true;formatButton.hidden=true;if(clearFile)fileInput.value='';statusNode.textContent='已清空。本页没有保存文件或草稿。';updateGuidance();}
 function safeText(value){return typeof value==='string'&&!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]|\r(?!\n)/u.test(value)&&!/[\ud800-\udfff]/u.test(value);}
 function validateReport(data,kind){
   if(!data||JSON.stringify(Object.keys(data).sort())!==JSON.stringify(['analysis_performed','format','saved','segments','verification','warnings'])||data.format!==kind||data.verification!=='unverified'||data.analysis_performed!==false||data.saved!==false||!Array.isArray(data.segments)||!data.segments.length||data.segments.length>MAX_SEGMENTS||!Array.isArray(data.warnings)||data.warnings.length>10)throw new Error('invalid');
@@ -109,7 +123,7 @@ async function extract(){
   const kind=file&&file.name.split('.').pop().toLowerCase();
   if(!file||!FORMATS.includes(kind)){statusNode.textContent='请选择 PDF、UTF-8 TXT 或 DOCX；旧式 DOC 请先另存为 DOCX。';return;}
   if(!file.size||file.size>MAX_BYTES){statusNode.textContent='文件不能为空，且不能超过 2 MiB。';return;}
-  const token=++generation,controller=new AbortController();active=controller;extractButton.disabled=true;statusNode.textContent='正在提取文字，不执行分析或能力核实…';
+  const token=++generation,controller=new AbortController();active=controller;extractButton.disabled=true;statusNode.textContent='正在提取文字，不执行分析或能力核实…';updateGuidance();
   let timedOut=false;const timer=setTimeout(()=>{timedOut=true;controller.abort();},30000);
   try{
     const response=await fetch('/imports/text',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-CareerAgent-Import':'local-preview','X-File-Format':kind},body:file,signal:controller.signal});
@@ -117,7 +131,7 @@ async function extract(){
     if(!response.ok){statusNode.textContent=errorMessage(response.status);return;}
     const data=await response.json();if(token!==generation)return;validateReport(data,kind);render(data);statusNode.textContent='文字提取完成；请对照原件校对，不代表资料真实或分析完成。';
   }catch(error){if(token===generation){clearPreview();statusNode.textContent=timedOut?'等待超过 30 秒，已停止本页等待，请重试较小文件。':'导入失败或结果格式异常，请确认服务和文件后重试。';}}
-  finally{clearTimeout(timer);if(token===generation){active=null;extractButton.disabled=false;}}
+  finally{clearTimeout(timer);if(token===generation){active=null;extractButton.disabled=false;updateGuidance();}}
 }
 extractButton.addEventListener('click',extract);clearButton.addEventListener('click',()=>reset());fileInput.addEventListener('change',()=>reset(false));
 confirmButton.addEventListener('click',()=>{
@@ -126,6 +140,7 @@ confirmButton.addEventListener('click',()=>{
   if(!drafts.every(editor=>{total+=Array.from(editor.value).length;return safeText(editor.value);})||total>MAX_CHARS||!drafts.some(editor=>editor.value.trim())||!safeText(additional.value)){reviewed=false;invalidateJson();reviewNode.textContent='校对文本不能为空、包含危险字符或超过文字限制。';return;}
   reviewed=true;
   reviewNode.textContent='已确认本页文字校对（未保存）。声明仍待核实；本步只确认文字校对，JSON 和分析状态请查看对应步骤。';
+  updateGuidance();
 });
 document.querySelector('#model-availability').textContent=MODEL_ENABLED?'本服务已启用可选千问整理；只有点击生成且同意外发才发送。':'本服务未启用模型整理；如需使用，请以 --enable-model-format 重启服务。纯文本提取不受影响。';
 formatButton.disabled=!MODEL_ENABLED;
@@ -156,6 +171,14 @@ function formatErrorMessage(status,code){
   if(Object.hasOwn(known,code)&&known[code][0]===status)return known[code][1];
   return ({403:'模型整理未启用或访问被拒绝。',408:'模型或传输超时，请先核对 API 用量，再自行决定是否重试。',413:'请求超限，请减少文字量。',415:'请求类型检查未通过；请按本页约定操作。',422:'检查未通过，服务未提供可识别的错误类别；请检查脱敏文字、JSON 字段和引用。',503:'模型暂不可用或正在处理；请检查密钥、网络和兼容性，勿连续重试。'})[status]||'整理或校验失败，请检查后重试。';
 }
+function showFieldErrors(status,body){
+  clearFieldErrors();
+  if(status!==422||!body||body.error_code!=='json'||!Array.isArray(body.field_errors)||body.field_errors.length>8)return;
+  const reasons={object:'必须是对象',fields:'必需字段缺失或含未约定字段',text:'必须是非空文字',list:'列表类型或必需项目不符合约定',limit:'条目数量超过限制',identifier:'须使用约定的匿名标识',data_kind:'仅支持约定的两种来源类型',duplicate:'标识重复，请在当前列表内保持唯一',category:'仅支持 required（必需）或 preferred（加分）',priority:'必须是整数 1、2 或 3，不能是布尔值',level:'仅支持 learning、practice、project 或 production',false_only:'必须为 false，不能升级为已核实',unverified_only:'必须为 unverified（待核实）'};
+  const allowed=/^(?:draft|case_id|data_kind|notice|job(?:\.(?:job_id|title|requirements(?:\[(?:[0-9]|[1-3][0-9])\](?:\.(?:requirement_id|skill_id|description|category|priority))?)?))?|candidate(?:\.(?:username|evidence(?:\[(?:[0-9]|[1-5][0-9])\](?:\.(?:evidence_id|skill_id|description|level|source|verified))?)?))?|qualifications(?:\[[0-9]\](?:\.(?:qualification_id|required|declared|source|verification|note))?)?)$/;
+  if(!body.field_errors.every(item=>item&&same(Object.keys(item).sort(),['path','reason'])&&typeof item.path==='string'&&allowed.test(item.path)&&typeof item.reason==='string'&&Object.hasOwn(reasons,item.reason)))return;
+  for(const item of body.field_errors)addNode(fieldErrors,'li',`${item.path}：${reasons[item.reason]}。`);fieldErrors.hidden=body.field_errors.length===0;
+}
 async function modelAction(validateOnly=false,regenerateApproved=false){
   if(formatActive||analysisActive||preview.hidden)return;
   let expected=null,requestBody;
@@ -164,7 +187,7 @@ async function modelAction(validateOnly=false,regenerateApproved=false){
     if(!MODEL_ENABLED||formatMode.value!=='model'||!reviewed||!modelConsent.checked){formatStatus.textContent='请启用模型整理、确认校对并明确同意外发文字。';return;}
     const segments=drafts.map((editor,index)=>({location:segmentNode.children[index].children[0].textContent,text:editor.value}));
     if(segments.reduce((sum,item)=>sum+Array.from(item.text).length,Array.from(additional.value).length)>12000||!segments.every(item=>safeText(item.text))||!safeText(additional.value)||!/^[a-z][a-z0-9_]{0,79}$/.test(caseId.value)){formatStatus.textContent='校对文字最多 12000 字符，匿名标识须符合约定，请检查后重新确认。';return;}
-    if(hasGenerated&&!regenerateApproved){regenerateWarning.hidden=false;return;}
+    if(hasGenerated&&!regenerateApproved){regenerateWarning.hidden=false;updateGuidance();return;}
     invalidateJson();
     requestBody=JSON.stringify({segments,additional_text:additional.value,text_kind:textKind.value,data_kind:dataKind.value,case_id:caseId.value,review_confirmed:true,consent:true});
   }
@@ -174,7 +197,7 @@ async function modelAction(validateOnly=false,regenerateApproved=false){
   try{
     const response=await fetch(validateOnly?'/imports/validate-json':'/imports/format-json',{method:'POST',headers:{'Content-Type':'application/json','X-CareerAgent-Import':'local-preview'},body:requestBody,signal:controller.signal});
     if(token!==formatGeneration)return;
-    if(!response.ok){let code;try{const body=await response.json();if(body&&typeof body.error_code==='string')code=body.error_code;}catch(error){if(controller.signal.aborted)throw error;}if(token!==formatGeneration)return;if(timedOut)throw new Error('timeout');target.textContent=formatErrorMessage(response.status,code);return;}
+    if(!response.ok){let body;try{body=await response.json();}catch(error){if(controller.signal.aborted)throw error;}if(token!==formatGeneration)return;if(timedOut)throw new Error('timeout');target.textContent=formatErrorMessage(response.status,body&&body.error_code);if(validateOnly)showFieldErrors(response.status,body);return;}
     const data=await response.json();if(token!==formatGeneration)return;resultValid(data,expected);
     if(!validateOnly){hasGenerated=true;jsonDraft.value=JSON.stringify(data.draft,null,2);jsonResult.hidden=false;formatStatus.textContent='模型整理已返回 JSON 草稿，请逐项复核，不代表真实或匹配成功。输入／输出 Token（计费文字单位）：'+(data.usage.input_tokens??'未返回')+'／'+(data.usage.output_tokens??'未返回')+'，实际费用以平台账单为准。';}
     showCompleteness(data);
@@ -185,7 +208,7 @@ async function modelAction(validateOnly=false,regenerateApproved=false){
 }
 formatButton.addEventListener('click',()=>modelAction());validateButton.addEventListener('click',()=>modelAction(true));
 regenerateConfirm.addEventListener('click',()=>{if(regenerateWarning.hidden)return;regenerateWarning.hidden=true;return modelAction(false,true);});
-regenerateCancel.addEventListener('click',()=>{regenerateWarning.hidden=true;formatStatus.textContent='已取消再次生成，当前草稿未替换；未发起新的模型请求。';});
+regenerateCancel.addEventListener('click',()=>{regenerateWarning.hidden=true;formatStatus.textContent='已取消再次生成，当前草稿未替换；未发起新的模型请求。';updateGuidance();});
 const stateLabels={matched:'已匹配',partial:'部分匹配',unverified:'待核实',missing:'缺少证据'};
 function same(left,right){if(left===right)return true;if(!left||!right||typeof left!=='object'||typeof right!=='object'||Array.isArray(left)!==Array.isArray(right))return false;const keys=Object.keys(left);return keys.length===Object.keys(right).length&&keys.every(key=>Object.hasOwn(right,key)&&same(left[key],right[key]));}
 function analysisReport(data,draft){
@@ -197,12 +220,13 @@ function analysisReport(data,draft){
   });return report;
 }
 function addNode(parent,tag,text,className=''){const item=document.createElement(tag);item.textContent=String(text);item.className=className;parent.append(item);return item;}
-function evidenceNode(parent,item){const card=addNode(parent,'div','');addNode(card,'p',`${item.evidence_id} · ${item.skill_id} · 层级声明 ${item.level}`);addNode(card,'p',item.description);addNode(card,'p',`来源声明：${item.source} · verified=false（待核实）`,'meta');}
+const levelLabels={learning:'学习',practice:'练习',project:'项目',production:'生产实践'},categoryLabels={required:'必需要求',preferred:'加分要求'};
+function evidenceNode(parent,item){const card=addNode(parent,'div','');addNode(card,'p',`${item.evidence_id} · ${item.skill_id} · 层级声明 ${levelLabels[item.level]}（${item.level}）`);addNode(card,'p',item.description);addNode(card,'p',`来源声明：${item.source} · verified=false（待核实）`,'meta');}
 function renderAnalysis(report){
   const draft=report.case,evidence=new Map(draft.candidate.evidence.map(item=>[item.evidence_id,item])),used=new Set(),matches=document.querySelector('#analysis-matches');matches.replaceChildren();
   document.querySelector('#analysis-summary').textContent=`分析执行完成 · ${draft.job.title} · 匿名候选人 ${draft.candidate.username}`;
   document.querySelector('#analysis-counts').textContent=Object.entries(stateLabels).map(([state,label])=>`${label} ${report.matches.filter(item=>item.status===state).length}`).join(' · ');
-  report.matches.forEach((match,index)=>{const card=addNode(matches,'article','');addNode(card,'h3',`${stateLabels[match.status]} · ${match.description}`);addNode(card,'p',`${match.requirement_id} · 技能 ${match.skill_id}`,'meta');addNode(card,'p',match.status==='missing'?'没有相同技能 ID 的证据，不等于现实中没有能力。':'存在相同技能 ID 的声明，但均未核实，不能判为已匹配。');for(const id of match.related_evidence_ids){used.add(id);evidenceNode(card,evidence.get(id));}const details=addNode(card,'details','');addNode(details,'summary','查看 trusted_facts 字段');addNode(details,'pre',JSON.stringify(report.trusted_facts[index],null,2));});
+  report.matches.forEach((match,index)=>{const card=addNode(matches,'article','');addNode(card,'h3',`${stateLabels[match.status]} · ${match.description}`);addNode(card,'p',`${match.requirement_id} · 技能 ${match.skill_id}`,'meta');addNode(card,'p',`${categoryLabels[match.category]}（${match.category}） · 输入优先级 ${match.priority}（原值，不用于评分或改变四态）`,'meta');addNode(card,'p',match.status==='missing'?'没有相同技能 ID 的证据，不等于现实中没有能力。':'存在相同技能 ID 的声明，但均未核实，不能判为已匹配。');for(const id of match.related_evidence_ids){used.add(id);evidenceNode(card,evidence.get(id));}const details=addNode(card,'details','');addNode(details,'summary','查看 trusted_facts 字段');addNode(details,'pre',JSON.stringify(report.trusted_facts[index],null,2));});
   const other=document.querySelector('#analysis-other');other.replaceChildren();for(const item of draft.candidate.evidence)if(!used.has(item.evidence_id))evidenceNode(other,item);if(used.size===evidence.size)addNode(other,'p','没有未关联证据。');
   const qualifications=document.querySelector('#analysis-qualifications');qualifications.replaceChildren();for(const item of draft.qualifications){addNode(qualifications,'p',`要求：${item.required}；声明：${item.declared}（待核实）`);addNode(qualifications,'p',`来源声明：${item.source}；${item.note}`,'meta');}if(!draft.qualifications.length)addNode(qualifications,'p','未提供资格声明，不等于已经满足资格。');
   const limits=document.querySelector('#analysis-limits');limits.replaceChildren();for(const item of report.limitations)addNode(limits,'p',item);analysisResult.hidden=false;
@@ -216,10 +240,11 @@ async function analyseCurrent(){
   try{
     const response=await fetch('/imports/analyses',{method:'POST',headers:{'Content-Type':'application/json','X-CareerAgent-Import':'local-preview'},body:'{"draft":'+raw+',"analysis_confirmed":true}',signal:controller.signal});
     if(token!==analysisGeneration)return;
-    if(!response.ok){let code;try{const body=await response.json();code=body&&body.error_code;}catch(error){if(controller.signal.aborted)throw error;}if(token!==analysisGeneration)return;if(timedOut)throw new Error('timeout');analysisStatus.textContent=response.status===422&&code==='incomplete'?'岗位或候选人缺失，请补充后重新校验。':response.status===503?'本机分析暂不可用；可检查服务后重试，不会调用模型。':response.status===422?formatErrorMessage(response.status,code):'本机分析请求未完成或被拒绝，请检查服务和草稿。';return;}
+    if(!response.ok){let body;try{body=await response.json();}catch(error){if(controller.signal.aborted)throw error;}if(token!==analysisGeneration)return;if(timedOut)throw new Error('timeout');const code=body&&body.error_code;showFieldErrors(response.status,body);analysisStatus.textContent=response.status===422&&code==='incomplete'?'岗位或候选人缺失，请补充后重新校验。':response.status===503?'本机分析暂不可用；可检查服务后重试，不会调用模型。':response.status===422?formatErrorMessage(response.status,code):'本机分析请求未完成或被拒绝，请检查服务和草稿。';return;}
     const data=await response.json();if(token!==analysisGeneration)return;if(timedOut)throw new Error('timeout');renderAnalysis(analysisReport(data,draft));analysisStatus.textContent='本机分析执行完成，使用同一份已校验 JSON；不证明资料真实、能力已匹配或录用成功。未保存、未调用模型。';
   }catch(error){if(token===analysisGeneration){analysisResult.hidden=true;analysisStatus.textContent=timedOut?'本机分析等待超过 15 秒，已停止本页等待，可检查服务后重试；没有新增模型费用。':'本机分析失败或响应与当前草稿不一致，未展示为完成；可检查后重试。';}}
   finally{clearTimeout(timer);if(token===analysisGeneration){analysisActive=null;syncOperationButtons();}}
 }
 analyseButton.addEventListener('click',analyseCurrent);
+updateGuidance();
 </script></body></html>
