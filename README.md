@@ -16,6 +16,7 @@ V1.8 增加“文件导入、校对与模型辅助整理”：独立提取 PDF�
 
 ## 文档导航
 
+- 代码目录与后续开发入口：[`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md)
 - 当前功能与验证结果：[`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)
 - 当前公开版本范围：[`docs/PROJECT_SCOPE.md`](docs/PROJECT_SCOPE.md)
 - 版本演进与历史验证证据：[`docs/CAREER_AGENT_HISTORY.md`](docs/CAREER_AGENT_HISTORY.md)
@@ -228,12 +229,12 @@ V1.9：岗位和候选人部分齐全时，先点击“仅校验当前 JSON”�
 页面脚本另有 30 项交互测试，使用 Node.js（JavaScript 运行环境）的内置测试工具、网络与 DOM 替身；已在 Node.js 24.19.0 验证。有 Node.js 22 或更新版本时，在上述项目虚拟环境安装完成后可单独运行：
 
 ```powershell
-node --test test_demo_page.cjs
+node --test tests/web/test_demo_page.cjs
 ```
 
 这组测试覆盖历史资料完整展示与视图隔离、分组遗漏、读取失败重试、后续案例异常、预设替换、可信事实缺失、矛盾拒绝报告、案例切换、超时和文本安全呈现；测试会通过项目虚拟环境读取后端输出。它独立于 Python 回归测试，也不能代替真实浏览器验收。运行应用和 Python 测试无需 Node.js，无需安装额外 npm 包。
 
-本机私有入口有 23 项终端、22 项服务和 4 项模板测试；文件导入、JSON 整理、草稿分析及字段提示有 81 项，完整 Python 回归为 325 项。原演示页 30 项、私有页 13 项、导入页 78 项脚本合计 121 项，可执行 `node --test test_demo_page.cjs test_private_demo_page.cjs test_file_import_page.cjs`。只使用人工资料和模型替身，不依赖个人简历、不产生真实模型费用；运行及边界见[私有案例说明](docs/PRIVATE_CASES.md)和[文件导入说明](docs/FILE_IMPORT.md)。独立入口不改变原演示页或 API 数据范围，没有身份验证，不用于公网或共享电脑。
+本机私有入口有 23 项终端、22 项服务和 4 项模板测试；文件导入、JSON 整理、草稿分析及字段提示有 81 项，另有 5 项目录兼容回归，完整 Python 回归为 330 项。原演示页 30 项、私有页 13 项、导入页 78 项脚本合计 121 项，可执行 `node --test tests/web/test_demo_page.cjs tests/web/test_private_demo_page.cjs tests/web/test_file_import_page.cjs`。只使用人工资料和模型替身，不依赖个人简历、不产生真实模型费用；运行及边界见[私有案例说明](docs/PRIVATE_CASES.md)和[文件导入说明](docs/FILE_IMPORT.md)。独立入口不改变原演示页或 API 数据范围，没有身份验证，不用于公网或共享电脑。
 
 运行 V1.2 脱敏离线评估集：
 
@@ -253,7 +254,7 @@ node --test test_demo_page.cjs
 
 评估运行器只把固定夹具复制到临时目录，并调用现有受控工具和 JD Agent；不会修改项目数据，也不会调用真实千问。
 
-V1.6 的历史完整 Python 测试为 195 项；V1.7 私有终端／服务增加 45 项，其后模板增加 4 项，V1.8 文件导入／JSON 整理增加 58 项，V1.8.1 增加 3 项，V1.9 增加 11 项，V1.9.1 增加 9 项，当前共 325 项。原评估集的 26 个固定案例仍与预设一致；4 个适用自由文本案例中有 3 个虚构声明被接受，而这些已知声明进入 `trusted_facts` 的数量为 0/4。这只说明固定案例中的事实字段隔离情况，**不代表真实模型面对任意 JD 的准确率或已消除幻觉**。页面、私有入口及文件导入／格式化回归不计入原 26 案例评估集。
+V1.6 的历史完整 Python 测试为 195 项；V1.7 私有终端／服务增加 45 项，其后模板增加 4 项，V1.8 文件导入／JSON 整理增加 58 项，V1.8.1 增加 3 项，V1.9 增加 11 项，V1.9.1 增加 9 项，目录兼容回归增加 5 项，当前共 330 项。原评估集的 26 个固定案例仍与预设一致；4 个适用自由文本案例中有 3 个虚构声明被接受，而这些已知声明进入 `trusted_facts` 的数量为 0/4。这只说明固定案例中的事实字段隔离情况，**不代表真实模型面对任意 JD 的准确率或已消除幻觉**。页面、私有入口及文件导入／格式化回归不计入原 26 案例评估集。
 
 V1.4 的全新 Python 3.13.5 环境复现、本机 HTTP 验收、脱敏示例一致性与 17 份受版本控制 JSON 不变性记录见[项目状态](docs/PROJECT_STATUS.md)和[版本历史](docs/CAREER_AGENT_HISTORY.md)；个人贡献仍需按真实参与过程核对。固定案例的完整计数和局限见[离线评估报告](examples/careeragent_v1_2_evaluation_report.json)。
 

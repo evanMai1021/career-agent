@@ -128,15 +128,15 @@ if (Test-Path -LiteralPath "notes\my-private-case.json") {
 ## 测试
 
 ```powershell
-.venv\Scripts\python.exe -m unittest test_private_case_runner test_private_case_server test_private_case_template
+.venv\Scripts\python.exe -m unittest tests.test_private_case_runner tests.test_private_case_server tests.test_private_case_template
 ```
 
 23 项终端入口测试和 22 项私有服务测试覆盖四态、同一快照、不变性、声明不升级、完整预设、共享错误检测、事实隔离、资格分离、敏感格式、错误处理、命令行退出码及本机访问边界。新增反例验证异常 Unicode 与终端控制字符在分析或服务启动前被拒绝，错误不回显原文、路径或异常堆栈；正常中文、表情和常见换行可完整保留。另有 13 项私有页面脚本测试，覆盖快照一致性、完整事实、重复点击、断连、超时、重试和文本安全展示。
 
-另有 4 项模板测试，验证四态、终端输出、重置标记与快照不变性。加上独立文件导入／JSON 整理／草稿分析及字段提示的 81 项，完整 Python 回归为 325 项，不依赖私人文件。原演示页 30 项与私有页 13 项脚本仍为 43 项，导入页另有 78 项，可用已安装的 Node.js 执行：
+另有 4 项模板测试，验证四态、终端输出、重置标记与快照不变性。加上独立文件导入／JSON 整理／草稿分析及字段提示的 81 项，另有 5 项目录兼容回归，完整 Python 回归为 330 项，不依赖私人文件。原演示页 30 项与私有页 13 项脚本仍为 43 项，导入页另有 78 项，可用已安装的 Node.js 执行：
 
 ```powershell
-node --test test_demo_page.cjs test_private_demo_page.cjs
+node --test tests/web/test_demo_page.cjs tests/web/test_private_demo_page.cjs
 ```
 
 这些结果只证明指定人工案例和边界的回归，不证明任意 JD、真实模型准确率或简历声明的真实性。

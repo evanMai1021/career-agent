@@ -2,6 +2,8 @@
 
 默认只提取文件文字并提供人工校对草稿；可选模型整理，再人工校对 JSON 和本地结构复验。完整草稿经另一次明确确认后，可同页本机分析，不调用模型、不保存或提升验证标记。提取、整理与校验均不自动分析。先用纯虚构或手工脱敏文件；无身份验证，不用于未经脱敏的真实简历、共享电脑、公网、代理或端口转发。
 
+代码已按职责分类，原启动命令不变；当前实现和测试位置见 [代码目录与开发导航](PROJECT_STRUCTURE.md)。下方分版本验收保留当时的测试统计。
+
 ## 安装和运行
 
 在项目根目录 PowerShell 运行，无需 `.env`、模型密钥或原演示服务：
@@ -113,11 +115,11 @@
 ## 验证证据
 
 ```powershell
-.venv\Scripts\python.exe -X utf8 -m unittest test_file_importer test_file_import_server test_text_json_formatter test_draft_analysis test_draft_validation_hints
-node --test test_file_import_page.cjs
+.venv\Scripts\python.exe -X utf8 -m unittest tests.test_file_importer tests.test_file_import_server tests.test_text_json_formatter tests.test_draft_analysis tests.test_draft_validation_hints
+node --test tests/web/test_file_import_page.cjs
 ```
 
-81 项 Python 测试覆盖解析、服务、模型整理、草稿分析与安全字段提示；当前完整回归为 325 项。自动化 HTTP 测试使用 TestClient／ASGITransport 在进程内验证，没有实际监听端口；PDF/DOCX 夹具仅在内存构造，模型仅用响应替身，不读取真实简历或调用真实 API。78 项导入页脚本覆盖文字与 JSON 校对、中文要求／层级、当前步骤、字段定位白名单、原始位置选中与失效、结果筛选与全量统计、外发与分析分别确认、缺项阻断、原始 JSON 校验、同一草稿与完整事实、编辑失效、固定错误、重复生成确认／取消、晚响应、超时和重试；加上原演示页 30 项与私有页 13 项，共 121 项。Node.js 只用于开发测试，不是应用依赖。
+81 项 Python 测试覆盖解析、服务、模型整理、草稿分析与安全字段提示；当前完整回归为 330 项（含 5 项目录兼容测试）。自动化 HTTP 测试使用 TestClient／ASGITransport 在进程内验证，没有实际监听端口；PDF/DOCX 夹具仅在内存构造，模型仅用响应替身，不读取真实简历或调用真实 API。78 项导入页脚本覆盖文字与 JSON 校对、中文要求／层级、当前步骤、字段定位白名单、原始位置选中与失效、结果筛选与全量统计、外发与分析分别确认、缺项阻断、原始 JSON 校验、同一草稿与完整事实、编辑失效、固定错误、重复生成确认／取消、晚响应、超时和重试；加上原演示页 30 项与私有页 13 项，共 121 项。Node.js 只用于开发测试，不是应用依赖。
 
 V1.9.1 提交前另以脚本复现并修复“已有结果时再次生成确认的步骤优先级”，费用确认先显示，取消后恢复结果步骤，确认前不新增请求。当时完整回归为 325 项 Python、107 项脚本；下方 106 项为更早浏览器验收阶段记录，该次修复未重复真实浏览器验收或调用真实模型。
 

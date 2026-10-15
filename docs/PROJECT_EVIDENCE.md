@@ -6,30 +6,30 @@
 
 | 可核对的项目主张 | 代码 | 测试或演示 | 可以怎样介绍 | 不应怎样介绍 |
 |---|---|---|---|---|
-| 受控工具调用与确认写入 | [`main.py`](../main.py)、[`qwen_agent.py`](../qwen_agent.py)、[`job_analysis_agent.py`](../job_analysis_agent.py) | [`test_main.py`](../test_main.py)、[`test_job_analysis_agent.py`](../test_job_analysis_agent.py)、[脱敏确认示例](../examples/careeragent_v0_7_confirmed_update_output.json) | 模型提出工具请求，Python 检查范围和参数；本地更新需要用户输入 `CONFIRM`。 | 模型拥有任意文件权限，或写入会自动发生。 |
-| 四态岗位匹配 | [`job_data.py`](../job_data.py)、[`job_matching.py`](../job_matching.py) | [`test_job_data.py`](../test_job_data.py)、[`test_job_matching.py`](../test_job_matching.py)、[匹配示例](../examples/careeragent_v0_9b_job_match_output.json) | 对经过结构校验的脱敏岗位要求和候选人证据，按相同 `skill_id`、证据层级与验证标记计算 `matched`、`partial`、`unverified`、`missing`。 | 能理解任意自然语言 JD，或能自动证明候选人真实能力。 |
-| 可信事实与模型建议分层 | [`job_analysis_agent.py`](../job_analysis_agent.py)、[`job_analysis_evaluation.py`](../job_analysis_evaluation.py) | [`test_job_analysis_agent.py`](../test_job_analysis_agent.py)、[`test_job_analysis_evaluation.py`](../test_job_analysis_evaluation.py)、[离线评估报告](../examples/careeragent_v1_2_evaluation_report.json) | `trusted_facts` 只包含 Python 核对的要求、状态和证据 ID；模型解释与建议另行标为未验证。 | 已消除模型幻觉，或模型自由文本都经过完整事实核查。 |
-| 固定案例离线评估 | [`job_analysis_evaluation_runner.py`](../job_analysis_evaluation_runner.py)、[`job_analysis_evaluation.py`](../job_analysis_evaluation.py) | [`test_job_analysis_evaluation.py`](../test_job_analysis_evaluation.py)、[26 案例报告](../examples/careeragent_v1_2_evaluation_report.json) | 用模型响应替身运行 26 个固定脱敏案例，并公开各指标的分子、分母和适用案例数。 | `26/26` 等于任意 JD 的准确率；报告中的 `0/4` 等于完整幻觉治理。 |
-| 本机只读 API | [`api_app.py`](../api_app.py) | [`test_api_app.py`](../test_api_app.py)、[完整脱敏响应](../examples/careeragent_v1_3_api_analysis_output.json) | 提供健康检查、岗位要求查询与本机离线确定性分析；HTTP 请求不能选择数据文件或模型。 | 已有登录系统、生产部署、任意 JD 接入或真实候选人数据服务。 |
-| 本机输入与判定过程展示 | [`api_app.py`](../api_app.py)、[`demo_cases.py`](../demo_cases.py)、[`demo.html`](../demo.html) | [`test_demo_cases.py`](../test_demo_cases.py)、[`test_demo_page.cjs`](../test_demo_page.cjs)、[模拟拒绝截图](images/careeragent-v1-6-simulated-rejection.jpg) | 切换五个模拟输入，查看证据来源、真实规则判定、执行步骤和预设／实际核对；请求有超时与恢复提示。 | 模拟案例代表真实个人能力或任意 JD 准确率；页面支持真实用户登录或公网使用。 |
-| 完整历史用户资料展示 | [`demo_profile.py`](../demo_profile.py)、[`demo.html`](../demo.html) | [`test_demo_profile.py`](../test_demo_profile.py)、[历史资料截图](images/careeragent-v1-6-historical-user-profile.jpg) | 查看固定历史用户的全部演示字段，将已验证证据、待核实描述和学习记录分别展示。 | 已经核实用户当前全部能力，或历史项目测试数证明个人独立掌握。 |
-| 本机私有结构化资料分析 | [`private_case_runner.py`](../private_case_runner.py)、[`private_case_server.py`](../private_case_server.py)、[`private_demo.html`](../private_demo.html) | [`test_private_case_runner.py`](../test_private_case_runner.py)、[`test_private_case_server.py`](../test_private_case_server.py)、[`test_private_demo_page.cjs`](../test_private_demo_page.cjs)、[`test_private_case_template.py`](../test_private_case_template.py)、[纯虚构模板](../examples/careeragent_v1_7_private_case_template.json)、[运行与输入说明](PRIVATE_CASES.md) | 明确指定手工脱敏 JSON，使用同一快照展示全部输入证据、关联结果及可信事实；资格分离，可选人工预设核对，不调用模型或写文件。 | 自动理解任意 JD、解析原始 PDF、证明简历声明真实，或已经具备认证和公网候选人服务。 |
+| 受控工具调用与确认写入 | [`main.py`](../career_agent/cli/main.py)、[`qwen_agent.py`](../career_agent/agents/qwen_agent.py)、[`job_analysis_agent.py`](../career_agent/agents/job_analysis_agent.py) | [`test_main.py`](../tests/test_main.py)、[`test_job_analysis_agent.py`](../tests/test_job_analysis_agent.py)、[脱敏确认示例](../examples/careeragent_v0_7_confirmed_update_output.json) | 模型提出工具请求，Python 检查范围和参数；本地更新需要用户输入 `CONFIRM`。 | 模型拥有任意文件权限，或写入会自动发生。 |
+| 四态岗位匹配 | [`job_data.py`](../career_agent/core/job_data.py)、[`job_matching.py`](../career_agent/core/job_matching.py) | [`test_job_data.py`](../tests/test_job_data.py)、[`test_job_matching.py`](../tests/test_job_matching.py)、[匹配示例](../examples/careeragent_v0_9b_job_match_output.json) | 对经过结构校验的脱敏岗位要求和候选人证据，按相同 `skill_id`、证据层级与验证标记计算 `matched`、`partial`、`unverified`、`missing`。 | 能理解任意自然语言 JD，或能自动证明候选人真实能力。 |
+| 可信事实与模型建议分层 | [`job_analysis_agent.py`](../career_agent/agents/job_analysis_agent.py)、[`job_analysis_evaluation.py`](../career_agent/evaluation/job_analysis_evaluation.py) | [`test_job_analysis_agent.py`](../tests/test_job_analysis_agent.py)、[`test_job_analysis_evaluation.py`](../tests/test_job_analysis_evaluation.py)、[离线评估报告](../examples/careeragent_v1_2_evaluation_report.json) | `trusted_facts` 只包含 Python 核对的要求、状态和证据 ID；模型解释与建议另行标为未验证。 | 已消除模型幻觉，或模型自由文本都经过完整事实核查。 |
+| 固定案例离线评估 | [`job_analysis_evaluation_runner.py`](../career_agent/evaluation/job_analysis_evaluation_runner.py)、[`job_analysis_evaluation.py`](../career_agent/evaluation/job_analysis_evaluation.py) | [`test_job_analysis_evaluation.py`](../tests/test_job_analysis_evaluation.py)、[26 案例报告](../examples/careeragent_v1_2_evaluation_report.json) | 用模型响应替身运行 26 个固定脱敏案例，并公开各指标的分子、分母和适用案例数。 | `26/26` 等于任意 JD 的准确率；报告中的 `0/4` 等于完整幻觉治理。 |
+| 本机只读 API | [`api_app.py`](../career_agent/services/api_app.py) | [`test_api_app.py`](../tests/test_api_app.py)、[完整脱敏响应](../examples/careeragent_v1_3_api_analysis_output.json) | 提供健康检查、岗位要求查询与本机离线确定性分析；HTTP 请求不能选择数据文件或模型。 | 已有登录系统、生产部署、任意 JD 接入或真实候选人数据服务。 |
+| 本机输入与判定过程展示 | [`api_app.py`](../career_agent/services/api_app.py)、[`demo_cases.py`](../career_agent/services/demo_cases.py)、[`demo.html`](../web/demo.html) | [`test_demo_cases.py`](../tests/test_demo_cases.py)、[`test_demo_page.cjs`](../tests/web/test_demo_page.cjs)、[模拟拒绝截图](images/careeragent-v1-6-simulated-rejection.jpg) | 切换五个模拟输入，查看证据来源、真实规则判定、执行步骤和预设／实际核对；请求有超时与恢复提示。 | 模拟案例代表真实个人能力或任意 JD 准确率；页面支持真实用户登录或公网使用。 |
+| 完整历史用户资料展示 | [`demo_profile.py`](../career_agent/services/demo_profile.py)、[`demo.html`](../web/demo.html) | [`test_demo_profile.py`](../tests/test_demo_profile.py)、[历史资料截图](images/careeragent-v1-6-historical-user-profile.jpg) | 查看固定历史用户的全部演示字段，将已验证证据、待核实描述和学习记录分别展示。 | 已经核实用户当前全部能力，或历史项目测试数证明个人独立掌握。 |
+| 本机私有结构化资料分析 | [`private_case_runner.py`](../career_agent/services/private_case_runner.py)、[`private_case_server.py`](../career_agent/services/private_case_server.py)、[`private_demo.html`](../web/private_demo.html) | [`test_private_case_runner.py`](../tests/test_private_case_runner.py)、[`test_private_case_server.py`](../tests/test_private_case_server.py)、[`test_private_demo_page.cjs`](../tests/web/test_private_demo_page.cjs)、[`test_private_case_template.py`](../tests/test_private_case_template.py)、[纯虚构模板](../examples/careeragent_v1_7_private_case_template.json)、[运行与输入说明](PRIVATE_CASES.md) | 明确指定手工脱敏 JSON，使用同一快照展示全部输入证据、关联结果及可信事实；资格分离，可选人工预设核对，不调用模型或写文件。 | 自动理解任意 JD、解析原始 PDF、证明简历声明真实，或已经具备认证和公网候选人服务。 |
 
 这些是**项目能力**的证据映射，不证明任何人的独立编码程度。简历中的“独立设计”“独立实现”等个人贡献表述，须另有本人完成过程的证据。
 
-V1.8 文件文字导入：[`file_importer.py`](../file_importer.py)、[`file_import_server.py`](../file_import_server.py) 和 [`file_import.html`](../file_import.html) 提供本机 PDF／TXT／DOCX 文字提取与人工校对；[`test_file_importer.py`](../test_file_importer.py)、[`test_file_import_server.py`](../test_file_import_server.py)、[`test_file_import_page.cjs`](../test_file_import_page.cjs) 验证解析及交互边界。可介绍为“有位置标记、限额及固定错误提示的本机文字预览”；不能介绍为“完整简历解析、能力核实或文件自动参与岗位分析”。运行见 [FILE_IMPORT.md](FILE_IMPORT.md)。
+V1.8 文件文字导入：[`file_importer.py`](../career_agent/imports/file_importer.py)、[`file_import_server.py`](../career_agent/services/file_import_server.py) 和 [`file_import.html`](../web/file_import.html) 提供本机 PDF／TXT／DOCX 文字提取与人工校对；[`test_file_importer.py`](../tests/test_file_importer.py)、[`test_file_import_server.py`](../tests/test_file_import_server.py)、[`test_file_import_page.cjs`](../tests/web/test_file_import_page.cjs) 验证解析及交互边界。可介绍为“有位置标记、限额及固定错误提示的本机文字预览”；不能介绍为“完整简历解析、能力核实或文件自动参与岗位分析”。运行见 [FILE_IMPORT.md](FILE_IMPORT.md)。
 
-可选 JSON 整理：[`text_json_formatter.py`](../text_json_formatter.py) 和 [`test_text_json_formatter.py`](../test_text_json_formatter.py) 验证确认后的修正文字、外发同意、描述摘录、字段约定、缺项处理与全部证据 false。2026-10-07 另通过真实浏览器完成一次纯虚构文字的千问联调及本地 JSON 反例，见 [FILE_IMPORT.md](FILE_IMPORT.md)。可以介绍“在明确同意后由模型辅助整理待复核草稿，再本地校验；一次虚构案例联调成功”；不能声称“任意真实简历已验收、技能映射准确或描述出现就证明能力”。没有自动保存／分析，任意文字语义准确性仍待验收。
+可选 JSON 整理：[`text_json_formatter.py`](../career_agent/imports/text_json_formatter.py) 和 [`test_text_json_formatter.py`](../tests/test_text_json_formatter.py) 验证确认后的修正文字、外发同意、描述摘录、字段约定、缺项处理与全部证据 false。2026-10-07 另通过真实浏览器完成一次纯虚构文字的千问联调及本地 JSON 反例，见 [FILE_IMPORT.md](FILE_IMPORT.md)。可以介绍“在明确同意后由模型辅助整理待复核草稿，再本地校验；一次虚构案例联调成功”；不能声称“任意真实简历已验收、技能映射准确或描述出现就证明能力”。没有自动保存／分析，任意文字语义准确性仍待验收。
 
 V1.8.1 校对交互：现有导入页、服务和格式化测试验证等宽加高编辑区、缺项列表、固定错误分类与成功后再次生成的费用确认。2026-10-09 的真实浏览器验收只使用虚构资料和模型响应替身，没有再次调用真实模型。可介绍“降低草稿校对与误重复请求风险”，不能声称“保证不会收费、隐私已完全清除或模型引用通过就证明能力”。
 
 ## 数据流与技术决策
 
-V1.9 当前草稿分析：[`file_import_server.py`](../file_import_server.py) 复用原分析契约，[`test_draft_analysis.py`](../test_draft_analysis.py) 与导入页脚本验证精确确认、缺项阻断、false 标记、同一草稿、独立事实预期、不变性和失败恢复。真实浏览器已用虚构输入与模型替身走通整理后本机分析，可介绍“人工复验并确认后的同页确定性分析”，不能称为“真实资料准确性验收、自动核实能力或自动录用”。操作见 [FILE_IMPORT.md](FILE_IMPORT.md#使用当前草稿进行本机分析)。
+V1.9 当前草稿分析：[`file_import_server.py`](../career_agent/services/file_import_server.py) 复用原分析契约，[`test_draft_analysis.py`](../tests/test_draft_analysis.py) 与导入页脚本验证精确确认、缺项阻断、false 标记、同一草稿、独立事实预期、不变性和失败恢复。真实浏览器已用虚构输入与模型替身走通整理后本机分析，可介绍“人工复验并确认后的同页确定性分析”，不能称为“真实资料准确性验收、自动核实能力或自动录用”。操作见 [FILE_IMPORT.md](FILE_IMPORT.md#使用当前草稿进行本机分析)。
 
-V1.9.1 校对引导：[`draft_validation_hints.py`](../draft_validation_hints.py) 仅在原严格校验失败后解释有限字段问题，[`test_draft_validation_hints.py`](../test_draft_validation_hints.py) 验证不回显原值、未知键、隐私及通用解析错误；导入页脚本验证中文展示、明确前置条件与编辑／晚响应失效。真实浏览器已用虚构输入与整理替身验证定位、恢复和展示。可介绍“改善人工校对与操作可理解性”，不能声称“提示穷尽全部错误、完整隐私检测或中文标签提高真实匹配准确率”。
+V1.9.1 校对引导：[`draft_validation_hints.py`](../career_agent/imports/draft_validation_hints.py) 仅在原严格校验失败后解释有限字段问题，[`test_draft_validation_hints.py`](../tests/test_draft_validation_hints.py) 验证不回显原值、未知键、隐私及通用解析错误；导入页脚本验证中文展示、明确前置条件与编辑／晚响应失效。真实浏览器已用虚构输入与整理替身验证定位、恢复和展示。可介绍“改善人工校对与操作可理解性”，不能声称“提示穷尽全部错误、完整隐私检测或中文标签提高真实匹配准确率”。
 
-V1.9.2 校对导航与结果筛选：[`file_import.html`](../file_import.html) 和 [`test_file_import_page.cjs`](../test_file_import_page.cjs) 验证点击错误后按原始位置选中值、缺失父级与保守降级、旧提示失效；筛选只隐藏要求卡片，保留全量统计和全部可信事实。另用真实浏览器、虚构 TXT 与整理替身验证点击和筛选、零结果、清空重置。可介绍“便于校对长 JSON 和查看长报告”，不能声称自动修复、增加事实准确性、已核实能力或筛选改变匹配状态。
+V1.9.2 校对导航与结果筛选：[`file_import.html`](../web/file_import.html) 和 [`test_file_import_page.cjs`](../tests/web/test_file_import_page.cjs) 验证点击错误后按原始位置选中值、缺失父级与保守降级、旧提示失效；筛选只隐藏要求卡片，保留全量统计和全部可信事实。另用真实浏览器、虚构 TXT 与整理替身验证点击和筛选、零结果、清空重置。可介绍“便于校对长 JSON 和查看长报告”，不能声称自动修复、增加事实准确性、已核实能力或筛选改变匹配状态。
 
 ```text
 本机演示页：打开 /demo → 加载模拟输入和预设 → 选择案例 → POST /demo/analyses
@@ -55,7 +55,7 @@ JD Agent：限定范围 → 模型请求三个只读工具 → Python 执行并�
 
 ## 一次问题修复案例
 
-早期可信事实校验只凭证据 ID 或验证标记，可能忽略证据所属技能、能力层级与状态之间的不一致。后来 `build_trusted_facts` 增加了完整关系检查；评估预期值也改为从原始夹具和预设状态独立构造，避免生产函数自己验证自己。对应反例见 [`test_job_analysis_agent.py`](../test_job_analysis_agent.py) 的 `TrustedFactsTests` 和 [`test_job_analysis_evaluation.py`](../test_job_analysis_evaluation.py) 的共享错误检测测试。项目曾发现并修复这一评估可信度缺口；个人是否参与发现或修复、能否用第一人称介绍，须按本人实际经历另行核对。不能据此说“证明所有模型输出真实”。
+早期可信事实校验只凭证据 ID 或验证标记，可能忽略证据所属技能、能力层级与状态之间的不一致。后来 `build_trusted_facts` 增加了完整关系检查；评估预期值也改为从原始夹具和预设状态独立构造，避免生产函数自己验证自己。对应反例见 [`test_job_analysis_agent.py`](../tests/test_job_analysis_agent.py) 的 `TrustedFactsTests` 和 [`test_job_analysis_evaluation.py`](../tests/test_job_analysis_evaluation.py) 的共享错误检测测试。项目曾发现并修复这一评估可信度缺口；个人是否参与发现或修复、能否用第一人称介绍，须按本人实际经历另行核对。不能据此说“证明所有模型输出真实”。
 
 ## 约三分钟项目讲解稿
 
@@ -73,7 +73,7 @@ JD Agent：限定范围 → 模型请求三个只读工具 → Python 执行并�
 
 ## 面试时应能回答的关键问题
 
-**为什么让 Python 决定匹配状态？** 因为状态由结构化 `skill_id`、证据层级和 `verified` 值按明确规则计算，能用相同输入复现；模型负责解释和建议，不修改状态或证据 ID。对应实现见 [`job_matching.py`](../job_matching.py)。
+**为什么让 Python 决定匹配状态？** 因为状态由结构化 `skill_id`、证据层级和 `verified` 值按明确规则计算，能用相同输入复现；模型负责解释和建议，不修改状态或证据 ID。对应实现见 [`job_matching.py`](../career_agent/core/job_matching.py)。
 
 **`matched` 与 `unverified` 有什么区别？** 相同技能下存在已验证的 `project` 或 `production` 证据时为 `matched`；仅有未验证的相关证据时为 `unverified`。已验证的 `learning` 或 `practice` 证据是 `partial`，没有相关证据是 `missing`。这里的“已验证”是输入数据标记，不是系统自动鉴定真实能力。
 
