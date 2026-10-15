@@ -25,7 +25,7 @@ V1.8.1 校对交互：现有导入页、服务和格式化测试验证等宽加�
 
 ## 数据流与技术决策
 
-统一启动：[start_services.py](../career_agent/cli/start_services.py)、[managed_worker.py](../career_agent/services/managed_worker.py) 与 [test_start_services.py](../tests/test_start_services.py) 验证独立服务的一条命令管理、明确启用私有资料、就绪判定、错误脱敏与仅回收本次进程。另以虚构模板完成三个页面 HTTP 200 与 Ctrl+C 端口释放；不表示数据互通、完整进程沙箱或生产部署。
+V1.9.3 统一启动：[start_services.py](../career_agent/cli/start_services.py)、[managed_worker.py](../career_agent/services/managed_worker.py) 与 [test_start_services.py](../tests/test_start_services.py) 验证独立服务的一条命令管理、明确启用私有资料、就绪判定、错误脱敏与仅回收本次进程。另以虚构模板完成三个页面 HTTP 200 与 Ctrl+C 端口释放；不表示数据互通、完整进程沙箱或生产部署。
 
 V1.9 当前草稿分析：[`file_import_server.py`](../career_agent/services/file_import_server.py) 复用原分析契约，[`test_draft_analysis.py`](../tests/test_draft_analysis.py) 与导入页脚本验证精确确认、缺项阻断、false 标记、同一草稿、独立事实预期、不变性和失败恢复。真实浏览器已用虚构输入与模型替身走通整理后本机分析，可介绍“人工复验并确认后的同页确定性分析”，不能称为“真实资料准确性验收、自动核实能力或自动录用”。操作见 [FILE_IMPORT.md](FILE_IMPORT.md#使用当前草稿进行本机分析)。
 
