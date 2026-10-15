@@ -1,4 +1,4 @@
-"""独立的本机文件文字预览服务；不接入案例分析或保存接口。"""
+"""本机文件文字预览与确认后的草稿分析；没有保存接口。"""
 
 import asyncio
 import ipaddress
@@ -12,7 +12,7 @@ from starlette.requests import ClientDisconnect
 import uvicorn
 
 from file_importer import ERRORS, FORMATS, MAX_FILE_BYTES, FileImportError, extract_document
-from private_case_runner import PrivateCaseError, SafeArgumentParser
+from private_case_runner import PrivateCaseError, SafeArgumentParser, analyse_private_case
 from private_case_server import PRIVATE_HEADERS
 from text_json_formatter import (
     FormatError, MAX_FORMAT_BODY, format_corrected_text, read_json, validate_draft,
@@ -54,7 +54,7 @@ def create_import_app(*, port=8002, enable_model_format=False):
             response = JSONResponse({"detail": "仅接受本机同源访问。"}, status_code=403)
         elif request.query_params:
             response = JSONResponse({"detail": "不接受查询参数。"}, status_code=422)
-        elif request.url.path in {"/imports/text", "/imports/format-json", "/imports/validate-json"} and request.headers.get("x-careeragent-import") != IMPORT_HEADER:
+        elif request.url.path in {"/imports/text", "/imports/format-json", "/imports/validate-json", "/imports/analyses"} and request.headers.get("x-careeragent-import") != IMPORT_HEADER:
             response = JSONResponse({"detail": "导入请求不符合约定。"}, status_code=403)
         else:
             response = await call_next(request)
@@ -134,11 +134,31 @@ def create_import_app(*, port=8002, enable_model_format=False):
         except FormatError as error:
             return format_error_response(error)
 
+    @app.post("/imports/analyses")
+    async def analyse_draft(request: Request):
+        try:
+            payload = await read_payload(request)
+            if set(payload) != {"draft", "analysis_confirmed"} or payload["analysis_confirmed"] is not True:
+                raise FormatError("input")
+            validated = validate_draft(payload["draft"])
+            if not validated["schema_valid"]:
+                return JSONResponse({"detail": "岗位和候选人资料必须完整提供，请补充后重新校验。",
+                                     "error_code": "incomplete"}, status_code=422)
+        except FormatError as error:
+            return format_error_response(error)
+        # 验证和分析使用同一份内存草稿；不读取案例文件、保存或调用模型。
+        try:
+            report = await run_in_threadpool(analyse_private_case, validated["draft"])
+        except Exception:
+            return JSONResponse({"detail": "本机分析暂不可用，未生成可展示结果。",
+                                 "error_code": "analysis"}, status_code=503)
+        return {"report": report, "analysis_performed": True, "saved": False}
+
     return app
 
 
 def main(argv=None):
-    parser = SafeArgumentParser(description="本机文件文字导入预览；无默认文件，无保存和分析接口。")
+    parser = SafeArgumentParser(description="本机文件文字导入；完整 JSON 确认后可离线分析，无保存接口。")
     parser.add_argument("--port", type=int, default=8002)
     parser.add_argument("--enable-model-format",action="store_true",help="允许确认后将脱敏校对文字发送到已有千问服务（产生API用量）。")
     try:
@@ -148,7 +168,7 @@ def main(argv=None):
         print("启动失败：参数无效，使用 --help 查看用法。", file=sys.stderr)
         return 2
     print(f"本机文件导入：http://127.0.0.1:{args.port}/import；按 Ctrl+C 停止。")
-    print("先用虚构或脱敏文件；无身份验证，不用于共享电脑、公网或代理。只预览，不保存或分析。")
+    print("先用虚构或脱敏文件；无身份验证，不用于共享电脑、公网或代理。完整草稿确认后可本机分析，不保存。")
     if args.enable_model_format:
         print("已启用可选千问 JSON 整理；仅点击并同意外发后发送校对文字，可能产生费用，结果待复核。")
     uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False, proxy_headers=False, log_level="warning")
