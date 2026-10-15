@@ -16,6 +16,7 @@ V1.8 增加“文件导入、校对与模型辅助整理”：独立提取 PDF�
 
 ## 文档导航
 
+- 一条命令启动本机服务：[`docs/UNIFIED_STARTUP.md`](docs/UNIFIED_STARTUP.md)
 - 代码目录与后续开发入口：[`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md)
 - 当前功能与验证结果：[`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)
 - 当前公开版本范围：[`docs/PROJECT_SCOPE.md`](docs/PROJECT_SCOPE.md)
@@ -58,7 +59,7 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-如果只体验本地只读 API、演示页、V1.7 私有入口或 V1.8 默认文件提取，可以跳过下面的 `.env` 和千问密钥配置，直接进入对应运行章节。私有入口另需自行准备符合约定的脱敏 JSON，不读取原始简历；可选模型整理才需要千问密钥。
+如果只体验统一启动的默认服务、本地只读 API、演示页、V1.7 私有入口或 V1.8 默认文件提取，可以跳过下面的 `.env` 和千问密钥配置，直接进入对应运行章节。私有入口另需自行准备符合约定的脱敏 JSON，不读取原始简历；可选模型整理才需要千问密钥。
 
 复制 `.env.example` 为 `.env`，然后只在本地填写：
 
@@ -68,6 +69,22 @@ CAREER_AGENT_MODE=llm
 ```
 
 `.env` 已被 `.gitignore` 忽略。请勿把真实密钥写入代码、截图或提交记录。
+
+## 统一启动本机网页
+
+在项目根目录运行，一起启动演示页和文件导入页，默认不调用模型、不需要密钥：
+
+```powershell
+.venv\Scripts\python.exe -X utf8 start.py
+```
+
+显示“均已就绪”后，打开 `http://127.0.0.1:8000/demo` 和 `http://127.0.0.1:8002/import`。如需同时使用私有资料页，可先明确指定公开虚构模板：
+
+```powershell
+.venv\Scripts\python.exe -X utf8 start.py --case-file examples/careeragent_v1_7_private_case_template.json
+```
+
+此时另可打开 `http://127.0.0.1:8001/private`。未指定资料时不启动私有页；所有页面仍独立，不共享草稿。保持一个终端开启，按 `Ctrl+C` 一起停止本次服务，不关闭其他已有服务。没有新增统一首页或自动保存功能。端口、可选模型开关及边界见[统一启动说明](docs/UNIFIED_STARTUP.md)；原单独启动命令仍可用。
 
 ## 命令行运行
 
@@ -234,7 +251,7 @@ node --test tests/web/test_demo_page.cjs
 
 这组测试覆盖历史资料完整展示与视图隔离、分组遗漏、读取失败重试、后续案例异常、预设替换、可信事实缺失、矛盾拒绝报告、案例切换、超时和文本安全呈现；测试会通过项目虚拟环境读取后端输出。它独立于 Python 回归测试，也不能代替真实浏览器验收。运行应用和 Python 测试无需 Node.js，无需安装额外 npm 包。
 
-本机私有入口有 23 项终端、22 项服务和 4 项模板测试；文件导入、JSON 整理、草稿分析及字段提示有 81 项，另有 5 项目录兼容回归，完整 Python 回归为 330 项。原演示页 30 项、私有页 13 项、导入页 78 项脚本合计 121 项，可执行 `node --test tests/web/test_demo_page.cjs tests/web/test_private_demo_page.cjs tests/web/test_file_import_page.cjs`。只使用人工资料和模型替身，不依赖个人简历、不产生真实模型费用；运行及边界见[私有案例说明](docs/PRIVATE_CASES.md)和[文件导入说明](docs/FILE_IMPORT.md)。独立入口不改变原演示页或 API 数据范围，没有身份验证，不用于公网或共享电脑。
+本机私有入口有 23 项终端、22 项服务和 4 项模板测试；文件导入、JSON 整理、草稿分析及字段提示有 81 项，另有 5 项目录兼容与 25 项统一启动回归，完整 Python 回归为 355 项。原演示页 30 项、私有页 13 项、导入页 78 项脚本合计 121 项，可执行 `node --test tests/web/test_demo_page.cjs tests/web/test_private_demo_page.cjs tests/web/test_file_import_page.cjs`。只使用人工资料和模型替身，不依赖个人简历、不产生真实模型费用；运行及边界见[私有案例说明](docs/PRIVATE_CASES.md)和[文件导入说明](docs/FILE_IMPORT.md)。独立入口不改变原演示页或 API 数据范围，没有身份验证，不用于公网或共享电脑。
 
 运行 V1.2 脱敏离线评估集：
 
@@ -254,7 +271,7 @@ node --test tests/web/test_demo_page.cjs
 
 评估运行器只把固定夹具复制到临时目录，并调用现有受控工具和 JD Agent；不会修改项目数据，也不会调用真实千问。
 
-V1.6 的历史完整 Python 测试为 195 项；V1.7 私有终端／服务增加 45 项，其后模板增加 4 项，V1.8 文件导入／JSON 整理增加 58 项，V1.8.1 增加 3 项，V1.9 增加 11 项，V1.9.1 增加 9 项，目录兼容回归增加 5 项，当前共 330 项。原评估集的 26 个固定案例仍与预设一致；4 个适用自由文本案例中有 3 个虚构声明被接受，而这些已知声明进入 `trusted_facts` 的数量为 0/4。这只说明固定案例中的事实字段隔离情况，**不代表真实模型面对任意 JD 的准确率或已消除幻觉**。页面、私有入口及文件导入／格式化回归不计入原 26 案例评估集。
+V1.6 的历史完整 Python 测试为 195 项；V1.7 私有终端／服务增加 45 项，其后模板增加 4 项，V1.8 文件导入／JSON 整理增加 58 项，V1.8.1 增加 3 项，V1.9 增加 11 项，V1.9.1 增加 9 项，目录兼容回归增加 5 项，统一启动回归增加 25 项，当前共 355 项。原评估集的 26 个固定案例仍与预设一致；4 个适用自由文本案例中有 3 个虚构声明被接受，而这些已知声明进入 `trusted_facts` 的数量为 0/4。这只说明固定案例中的事实字段隔离情况，**不代表真实模型面对任意 JD 的准确率或已消除幻觉**。页面、私有入口及文件导入／格式化回归不计入原 26 案例评估集。
 
 V1.4 的全新 Python 3.13.5 环境复现、本机 HTTP 验收、脱敏示例一致性与 17 份受版本控制 JSON 不变性记录见[项目状态](docs/PROJECT_STATUS.md)和[版本历史](docs/CAREER_AGENT_HISTORY.md)；个人贡献仍需按真实参与过程核对。固定案例的完整计数和局限见[离线评估报告](examples/careeragent_v1_2_evaluation_report.json)。
 

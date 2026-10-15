@@ -1,6 +1,6 @@
 # 代码目录与开发导航
 
-本次只整理文件位置与导入路径，功能版本仍为 V1.9.2；不增加接口、模型调用、依赖或新的匹配规则。常用启动入口保留在项目根目录，原 JSON 数据、examples 和本地私人资料不搬动。
+目录整理保留 V1.9.2 的业务边界；常用启动入口保留在项目根目录，原 JSON 数据、examples 和本地私人资料不搬动。另新增 [统一启动入口](UNIFIED_STARTUP.md)，只管理现有独立服务，不增加业务 HTTP 接口、依赖或匹配规则。
 
 ## 目录分类
 
@@ -35,6 +35,7 @@ examples/                  公开脱敏／虚构示例
 | 私有 JSON 分析和资料页面 | [private_case_runner.py](../career_agent/services/private_case_runner.py)、[private_case_server.py](../career_agent/services/private_case_server.py)、[private_demo.html](../web/private_demo.html) | [test_private_case_runner.py](../tests/test_private_case_runner.py)、[test_private_case_server.py](../tests/test_private_case_server.py)、[test_private_demo_page.cjs](../tests/web/test_private_demo_page.cjs) |
 | 离线评估与报告 | [evaluation](../career_agent/evaluation/) | [test_job_analysis_evaluation.py](../tests/test_job_analysis_evaluation.py) |
 | 目录、旧入口与资源路径 | [paths.py](../career_agent/paths.py) | [test_project_layout.py](../tests/test_project_layout.py) |
+| 统一启动、就绪与退出回收 | [start_services.py](../career_agent/cli/start_services.py)、[managed_worker.py](../career_agent/services/managed_worker.py) | [test_start_services.py](../tests/test_start_services.py) |
 
 新增业务代码使用完整包路径，例如 `from career_agent.core.job_matching import match_job_requirements`；Python 测试之间的辅助函数使用 `from tests.test_text_json_formatter import ...`。不要将新业务逻辑写回根目录兼容入口。
 
@@ -61,7 +62,7 @@ examples/                  公开脱敏／虚构示例
 
 对应网页为 `http://127.0.0.1:8000/demo`、`http://127.0.0.1:8002/import` 和 `http://127.0.0.1:8001/private`。终端保持开启，结束按 `Ctrl+C`。仍只用于本机虚构／脱敏资料，没有身份验证，不用于公网或共享电脑。可选模型整理的启动开关、费用与明确同意边界见 [文件导入说明](FILE_IMPORT.md)。
 
-根目录六个 Python 文件仅兼容原入口；实际实现分别在 `career_agent/cli/`、`services/`、`evaluation/`。也可从根目录使用 `python -m career_agent.services.file_import_server --port 8002`；不要直接运行包内部文件路径，以免缺少包导入环境。
+根目录原有六个 Python 文件仅兼容旧入口，另有新增的 `start.py` 统一启动入口；实际实现分别在 `career_agent/cli/`、`services/`、`evaluation/`。也可从根目录使用 `python -m career_agent.services.file_import_server --port 8002`；不要直接运行包内部文件路径，以免缺少包导入环境。
 
 ## 测试方式
 
@@ -80,4 +81,6 @@ node --test tests/web/test_demo_page.cjs tests/web/test_private_demo_page.cjs te
 
 Node.js 仍仅用于开发测试，不是应用运行依赖。历史记录中的旧文件位置／单模块测试命令属于当时结构；当前入口以本页为准。目录调整不代表真实资料准确性或个人能力验收完成。
 
-本次实际验证：330 项 Python 测试（原 325 项与新增 5 项目录兼容回归）、121 项网页脚本通过；原交互命令行的规则模式、虚构模板终端分析、26 个固定案例离线评估均运行成功，原 `api_app:app` 经 Uvicorn 配置加载通过。三个网页内容哈希保持一致。没有重新进行浏览器交互或真实模型调用，不将目录整理记作新的模型能力验收。
+目录整理阶段验证：330 项 Python 测试（原 325 项与新增 5 项目录兼容回归）、121 项网页脚本通过；原交互命令行的规则模式、虚构模板终端分析、26 个固定案例离线评估均运行成功，原 `api_app:app` 经 Uvicorn 配置加载通过。三个网页内容哈希保持一致。没有重新进行浏览器交互或真实模型调用，不将目录整理记作新的模型能力验收。
+
+统一启动新增 25 项测试，当前完整 Python 回归为 355 项，网页脚本仍为 121 项；实际验证仅使用虚构模板和本机服务，见 [统一启动说明](UNIFIED_STARTUP.md)。
